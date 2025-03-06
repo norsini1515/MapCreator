@@ -5,7 +5,6 @@ from PIL import ImageEnhance, Image
 
 from mapcreator import directories
 
-
 '''
 Use Pillow to load your map image and apply initial adjustments.
 Convert the image into an OpenCV-compatible format (e.g., numpy array).
@@ -68,7 +67,7 @@ def prepare_image(img, contrast_factor=2.0):
     img = enhancer.enhance(contrast_factor)  # Adjustable contrast factor
     return binarize_img(img)
 
-def display_image(title, img_array, output=True, resize_dim=(800, 800)):
+def display_image(title, img_array, output=True, resize_dim=(1000, 1000)):
     """
     Display and optionally save an image.
 
@@ -110,6 +109,9 @@ def image_array_coords(img_array, value=255):
     # Convert to a list of tuples (x, y)
     return coords[:, [1, 0]].astype(int)
 
+def invert_image(img_array):
+    return np.abs(255 - img_array)
+
 if __name__ == '__main__':
     # Load the landmass base map
     landmass_base_map = directories.IMAGES_DIR / "landamass_base.jpg"
@@ -120,19 +122,19 @@ if __name__ == '__main__':
     
     display_image("Preprocessed Image", img_array)
     
-    # kernel = np.ones((3, 3), np.uint8)
+    kernel = np.ones((3, 3), np.uint8)
 
-    # # Erode to remove small noise
-    # eroded_img = cv2.erode(img_array, kernel, iterations=1)
-    # display_image("Eroded Image", eroded_img)
+    # Erode to remove small noise
+    eroded_img = cv2.erode(img_array, kernel, iterations=1)
+    display_image("Eroded Image", eroded_img)
     
-    # # Dilate to strengthen edges
-    # dilated_img = cv2.dilate(eroded_img, kernel, iterations=1)
-    # display_image("Dilated Image", dilated_img)
+    # Dilate to strengthen edges
+    dilated_img = cv2.dilate(eroded_img, kernel, iterations=1)
+    display_image("Dilated Image", dilated_img)
     
-    # # Closing: Fill small holes
-    # closed_img = cv2.morphologyEx(dilated_img, cv2.MORPH_CLOSE, kernel)    
-    # display_image("Closed Image", closed_img)
+    # Closing: Fill small holes
+    closed_img = cv2.morphologyEx(dilated_img, cv2.MORPH_CLOSE, kernel)    
+    display_image("Closed Image", closed_img)
     
     # Display and process
     print("Image successfully processed and converted to NumPy array.")
