@@ -1,2 +1,2 @@
 from . import directories
-from . import constants
+from . import configs

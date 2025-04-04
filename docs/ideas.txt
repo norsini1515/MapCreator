@@ -1,0 +1,151 @@
+1. Plotly working, build_interactive_map
+2. apply_style function (later to be moved to visualizaiton/styles.py) <- I think that will apply to dash quite nicely.
+3. move these plotly functionalities to a new module visualization/world_viewer.py (polygon_viewer will eventually become deprecated probably, it is useful in that early stage)
+4. implement imagepath -> shapefile path processing pipeline.
+5. process inland seas, lakes.
+6. processes connected to ocean features
+
+Refinements/Small Suggestions
+Between steps 1 and 2
+✔ Consider building a tiny apply_fantasy_style(fig) placeholder early — even if it just changes background and disables grid.
+→ This lets you test it during step 1 and helps define the aesthetic ahead of time.
+
+After step 3
+🔁 Add a quick validation function like:
+
+python
+Copy
+Edit
+def validate_shapefile_metadata(shapefile_path):
+    """Check for expected tags like 'feature_type'."""
+→ Will help when you start merging or layering data later (useful in Dash too).
+
+✨ Possible Additions
+Step 6.5: Visual Layer Prioritization
+When combining land/water/sea in interactive maps: define drawing order (so lakes render on top of land, etc.). → Could use a z_index property in the shapefile or sort geometries before visualization.
+
+Step 7: Style Drafting Workshop
+At some point, it might help to sketch (even on paper) how your fantasy style should feel:
+
+Parchment background?
+
+Antique map color palette?
+
+Font and iconography for labels?
+
+Map tile options like custom terrain texture?
+
+We can even generate swatches and mockups when you're ready.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+current term:
+* develop shapefiles
+* generate terrain using terrain data layers
+* develop waterways
+
+mid term:
+* draw areas/regions
+* draw territories
+* draw states
+* draw provinces
+
+long term:
+* eu4 mod
+* dash application to interact with world, explore data, layers, etc.
+
+
+
+1. Shape Processing & Extraction
+ ✅ Extract Inland Seas, Lakes, and Ravines
+
+    Use water-filled landmass image
+
+    Classify enclosed white regions as lake
+
+    Classify connected white regions as sea or ravine depending on shape/location
+
+    Consider keeping these in separate initial shapefiles
+
+    🧠 Decide on handling mixed features (e.g., islands in seas)
+
+🗂️ 2. Shapefile Organization & Data Modeling
+    ✅ Use processing_category in filenames
+
+    You've started this already!
+
+    🧩 Assign feature type to polygons
+
+    Add feature_type or tag property: land, lake, sea, ravine, etc.
+
+ 📦 Combine shapefiles later
+
+    Create a merge_shapefiles utility for consolidating tagged layers into a master shapefile
+
+    ✨ Begin assigning persistent polygon IDs (later, for stability across runs)
+
+🎨 3. Visualization Layer
+    ✅ Modularize all polygon viewing into polygon_viewer.py ✔️ Done!
+
+    🔄 Update Plotly interactive map
+
+    Replace choropleth_mapbox with choropleth_map
+
+    Return Plotly Figure instead of auto-showing or saving
+
+    Make save_figure_to_html(fig, path) its own utility
+
+    🧙 apply_fantasy_style(fig)
+
+    Stylize Plotly figures for Htrea’s look (parchment, desaturation, no grid, etc.)
+
+    Ideal for worldbuilder/fantasy map overlay feel
+
+🧠 4. Pipeline Structuring & Modularization
+    ✅ Create develop_shapefile() pipeline function
+
+    Move this into a new processing.py module (or similar)
+
+    ✂️ Clean up shapefile.py
+
+    Focus it only on saving/loading shapefiles and basic plotting
+
+🌍 5. World Fidelity & Future Concerns
+    📏 Image scaling + resolution
+
+    Consider larger format or vector-based image for more natural features
+
+    Possibly add post-processing to smooth polygon edges
+
+    🧩 Feature fidelity
+
+    Revisit ravines or tiny inland features that might get dropped due to thresholding
+
+    🧠 Track edits/version control for source image
+
+    Potentially track image edits alongside extracted data
+

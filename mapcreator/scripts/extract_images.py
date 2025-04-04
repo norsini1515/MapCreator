@@ -65,9 +65,13 @@ def prepare_image(img, contrast_factor=2.0):
     img = img.convert("L") 
     enhancer = ImageEnhance.Contrast(img)
     img = enhancer.enhance(contrast_factor)  # Adjustable contrast factor
-    return binarize_img(img)
+    
+    img = binarize_img(img)
+    img = np.array(img).astype(np.uint8) * 255
+    
+    return img
 
-def display_image(title, img_array, output=True, resize_dim=(1000, 1000)):
+def display_image(title, img_array, output=False, resize_dim=(1000, 1000)):
     """
     Display and optionally save an image.
 
@@ -95,7 +99,7 @@ def display_image(title, img_array, output=True, resize_dim=(1000, 1000)):
     
 def image_array_coords(img_array, value=255):
     """
-    Extract coordinates of all cells in the image array that are not 255 (white).
+    Extract coordinates of all cells in the image array that are not value (default 255, white).
 
     Args:
         img_array: NumPy array representing the image.
@@ -114,7 +118,7 @@ def invert_image(img_array):
 
 if __name__ == '__main__':
     # Load the landmass base map
-    landmass_base_map = directories.IMAGES_DIR / "landamass_base.jpg"
+    landmass_base_map = directories.IMAGES_DIR / "old_images/landamass_drawing_base.jpg"
     img = extract_image_from_file(landmass_base_map)
     img = prepare_image(img, contrast_factor=2.0)
     

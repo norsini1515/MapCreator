@@ -1,2 +1,2 @@
-from mapcreator.globals import constants
+from mapcreator.globals import configs
 from mapcreator.globals import directories
