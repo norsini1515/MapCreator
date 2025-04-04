@@ -48,8 +48,7 @@ def binarize_img(img, threshold=120):
         Binarized Pillow image object.
     """
     
-    img = img.point(lambda p: 0 if p > threshold else 255, mode="1")
-    return img
+    return img.point(lambda p: 0 if p > threshold else 255, mode="1")
     
 def prepare_image(img, contrast_factor=2.0):
     """
@@ -66,12 +65,13 @@ def prepare_image(img, contrast_factor=2.0):
     enhancer = ImageEnhance.Contrast(img)
     img = enhancer.enhance(contrast_factor)  # Adjustable contrast factor
     
-    img = binarize_img(img)
-    img = np.array(img).astype(np.uint8) * 255
+    binarized = binarize_img(img)
     
-    return img
+    img_array = np.array(binarized).astype(np.uint8) * 255
+    
+    return invert_image(img_array)
 
-def display_image(title, img_array, output=False, resize_dim=(1000, 1000)):
+def display_image(img_array, title="", output=False, resize=False, resize_dim=(1000, 1000)):
     """
     Display and optionally save an image.
 
@@ -86,7 +86,11 @@ def display_image(title, img_array, output=False, resize_dim=(1000, 1000)):
         img_array = (img_array * 255).astype(np.uint8)
     
     # Resize and display
-    resized_img = cv2.resize(img_array, resize_dim)
+    if resize:
+        resized_img = cv2.resize(img_array, resize_dim)
+    else:
+        resized_img = img_array.copy()
+        
     cv2.imshow(title, resized_img)
     cv2.waitKey(0)
     cv2.destroyAllWindows()
@@ -120,9 +124,7 @@ if __name__ == '__main__':
     # Load the landmass base map
     landmass_base_map = directories.IMAGES_DIR / "old_images/landamass_drawing_base.jpg"
     img = extract_image_from_file(landmass_base_map)
-    img = prepare_image(img, contrast_factor=2.0)
-    
-    img_array = np.array(img).astype(np.uint8) * 255  # Convert binary image to uint8
+    img_array = prepare_image(img, contrast_factor=2.0, as_array=True)
     
     display_image("Preprocessed Image", img_array)
     
