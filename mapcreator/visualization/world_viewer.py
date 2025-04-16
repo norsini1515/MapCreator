@@ -1,14 +1,14 @@
 import plotly.graph_objects as go
 import geopandas as gpd
 
-def plot_polygon_shapes_interactive(shapefile_path):
+def plot_polygon_shapes_interactive(shapefile_path, fig=None):
     """
     Plots raw 2D polygon shapes from a shapefile using Plotly (no map projection).
     Perfect for fantasy or image-based maps.
     """
     gdf = gpd.read_file(shapefile_path)
-
-    fig = go.Figure()
+    if not fig:
+        fig = go.Figure()
 
     for i, row in gdf.iterrows():
         poly = row.geometry

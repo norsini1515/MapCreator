@@ -17,6 +17,7 @@ import os
 import cv2
 import fiona
 import numpy as np
+import pandas as pd
 import geopandas as gpd
 from fiona.crs import CRS
 from datetime import datetime
@@ -25,13 +26,16 @@ from shapely.geometry import Polygon, MultiPolygon
 from shapely.validation import explain_validity
 from pathlib import Path
 
+from mapcreator.map.image_map_pre_edits import flood_fill_ocean
 from mapcreator import directories, configs
 import mapcreator.scripts.extract_images as extract_images
 from mapcreator import polygon_viewer, world_viewer
 from mapcreator.visualization import viewing_util
 
+VERBOSE = False
+
 def extract_contours(img_array, min_area=configs.MIN_AREA, min_points=configs.MIN_POINTS,
-                     verbose=True):
+                     verbose=VERBOSE):
     """
     Extract valid contours from a binary image.
 
@@ -46,7 +50,9 @@ def extract_contours(img_array, min_area=configs.MIN_AREA, min_points=configs.MI
     contours, _ = cv2.findContours(img_array, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
     polygons = []
-
+    
+    if verbose:
+        print(len(contours), "potential polygons found")
     for i, c in enumerate(contours):
         if len(c) >= min_points:  # Ensure enough points for a polygon
             coords = [(x, y) for x, y in c[:, 0, :]]
@@ -92,74 +98,44 @@ def extract_contours(img_array, min_area=configs.MIN_AREA, min_points=configs.MI
             
     return polygons
 
-def save_shapefile(polygons, output_path, classification_label="unknown"):
-    """
-    Save a list of Shapely Polygons to a shapefile with a type classification.
-
-    Args:
-        polygons (List[Polygon]): List of Shapely Polygon objects to save.
-        output_path (Path): File path to save the resulting shapefile.
-        classification_label (str): Classification label for the polygons (default: 'unknown').
-
-    Returns:
-        None
-    """
-    
-    schema = {
-        "geometry": "Polygon",
-        "properties": {
-            "id": "int",
-            "type": "str",
-        },
-    }
-
-    os.makedirs(directories.SHAPEFILES_DIR, exist_ok=True)
-
-    with fiona.open(output_path, mode="w", driver="ESRI Shapefile", schema=schema, crs=CRS.from_epsg(4326)) as shapefile:
-        for i, polygon in enumerate(polygons):
-            shapefile.write({
-                "geometry": {
-                    "type": "Polygon",
-                    "coordinates": [np.array(polygon.exterior.coords).tolist()],
-                },
-                "properties": {
-                    "id": i,
-                    "type": classification_label,
-                },
-            })
-
-    print(f"✅ Shapefile saved to: {output_path}")
+    print(f"✅ Shapefile saved to: {shapefile_path}")
    
-def visualize_shapefile(data, title="Shapefile Visualization"):
+def visualize_shapefile(data, title: str = None):
     """
-    Visualizes either a shapefile from path or a list of Shapely polygons.
+    Visualizes a shapefile or in-memory polygons using GeoPandas and Matplotlib.
 
     Args:
-        data (Path or List[Polygon]): Path to a shapefile OR a list of Shapely polygons.
-        title (str): Title for the plot.
+        data (Path | GeoDataFrame | List[Polygon]): 
+            Path to a shapefile, a GeoDataFrame, or a list of Shapely polygons.
+        title (str): Optional plot title (defaults to filename or "Polygon Visualization").
     """
     if isinstance(data, (str, Path)):
         gdf = gpd.read_file(data)
         source = Path(data).stem
+    elif isinstance(data, gpd.GeoDataFrame):
+        gdf = data
+        source = title or "GeoDataFrame"
     elif isinstance(data, list):
-        gdf = gpd.GeoDataFrame({"geometry": data})
+        gdf = gpd.GeoDataFrame({"geometry": data}, crs="EPSG:4326")
         source = title or "Polygon List"
     else:
-        raise TypeError("Input must be a Path or list of Shapely Polygon objects.")
+        raise TypeError("Input must be a Path, GeoDataFrame, or list of Shapely Polygons.")
 
     if gdf.empty:
         raise ValueError("GeoDataFrame is empty, cannot visualize.")
-
+    
+    title = title or f"Visualization of {source}"
     print(f"🗺️ Displaying: {source}")
     print("Bounds:", gdf.total_bounds)
 
     xmin, ymin, xmax, ymax = gdf.total_bounds
     if np.isinf(xmin) or np.isinf(ymin) or np.isinf(xmax) or np.isinf(ymax):
         raise ValueError("Shapefile contains invalid coordinate bounds.")
-
-    fig, ax = plt.subplots(figsize=(10, 10))
+    
+    fig, ax = plt.subplots(figsize=(10, 10), num=title)
     gdf.plot(ax=ax, edgecolor="black", facecolor="lightblue", aspect=None)
-
+    
+    #set aspect accordingly
     width = xmax - xmin
     height = ymax - ymin
     ax.set_aspect(width / height if width > 0 and height > 0 else "equal", adjustable="datalim")
@@ -168,59 +144,44 @@ def visualize_shapefile(data, title="Shapefile Visualization"):
     ax.set_xlabel("X")
     ax.set_ylabel("Y")
 
-    # for idx, row in gdf.iterrows():
-    #     if row.geometry.is_empty:
-    #         continue
-    #     centroid = row.geometry.centroid
-    #     ax.text(centroid.x, centroid.y, str(row.get("id", idx)), fontsize=8, ha="center", color="black")
-
-    bbox = plt.Rectangle((xmin, ymin), width, height, linewidth=1, edgecolor='gray', facecolor='none', linestyle=':')
+    bbox = plt.Rectangle((xmin, ymin), width, height,
+                         linewidth=1, edgecolor='gray', facecolor='none', linestyle=':')
     ax.add_patch(bbox)
 
     ax.invert_yaxis()
-    plt.title(f"Visualization of {source}")
+    plt.title(title)
     plt.show()
-        
-def fill_water_regions_to_array(img_path: Path) -> np.ndarray:
+       
+def build_geodataframe(polygons, metadata=None):
     """
-    Converts a landmask image (white land, black water) into a filled landmass array.
-    Useful for contour extraction of the full base landmass.
+    Construct a GeoDataFrame from a list of polygons and optional metadata.
 
     Args:
-        img_path: Path to the original 'LakesOPEN' binary image.
+        polygons (List[Polygon]): Shapely polygons.
+        metadata (dict): Metadata to apply to all polygons.
 
     Returns:
-        Numpy array of the filled landmass image (binary: 0 for background, 255 for land)
+        GeoDataFrame: A GeoPandas dataframe with metadata and geometry.
     """
-    img = cv2.imread(str(img_path), cv2.IMREAD_GRAYSCALE)
-
-    # Ensure the image is binary (in case of compression artifacts)
-    _, binary = cv2.threshold(img, 127, 255, cv2.THRESH_BINARY)
-
-    # Invert: water becomes white (255), land black (0)
-    inverted = cv2.bitwise_not(binary)
-
-    # Flood fill background from top-left corner (assumed sea)
-    h, w = inverted.shape
-    mask = np.zeros((h + 2, w + 2), np.uint8)
-    cv2.floodFill(inverted, mask, (0, 0), 0)  # Fill sea with black (0)
-
-    # Invert back: land is white, lakes/seas filled in
-    filled = cv2.bitwise_not(inverted)
-
-    return filled
+    metadata = metadata or {}
+    df = pd.DataFrame(metadata, index=range(len(polygons)))
+    gdf = gpd.GeoDataFrame(df, geometry=polygons, crs="EPSG:4326")
+    gdf["id"] = gdf.index  # Always include an ID
+    
+    return gdf
 
 def image_to_shapefile(
     img_path: Path,
     invert: bool = False,
     output: bool = False,
-    output_path: Path = None,
-    visualize: bool=True, 
-    contrast_factor: float=2.0, 
-    min_area: float=1.0, 
-    min_points: int=3, 
-    processing_level: int=0,
-    processing_group: str="Unknown",
+    shapefile_path: Path = None,
+    visualize: bool = True, 
+    contrast_factor: float = 2.0, 
+    min_area: float = 1.0, 
+    min_points: int = 3, 
+    metadata: dict = None,
+    flood_fill: bool=False,
+    verbose: bool=VERBOSE
     ):
     """
     End-to-end pipeline to convert an image to a shapefile of extracted polygons.
@@ -229,73 +190,139 @@ def image_to_shapefile(
         img_path (Path): Path to the input .jpg image.
         invert (bool): Whether to invert image after binarization.
         output (bool): If True, save the shapefile.
-        output_path (Path): Where to save the shapefile if output=True.
+        shapefile_path (Path): Where to save the shapefile if output=True.
         visualize (bool): Whether to visualize the shapefile.
         contrast_factor (float): Contrast enhancement factor.
         min_area (float): Minimum polygon area to keep.
         min_points (int): Minimum number of points per polygon.
-        # processing_level (str): Tag for saving shapefile metadata.
+        metadata (dict): Metadata dictionary to apply to all features.
 
     Returns:
-        Path or List[Polygon]: Output path or list of polygons.
+        GeoDataFrame
     """
-    if(not str(img_path).endswith('.jpg')):
-        raise ValueError('expecting a .jpg input image')
+    if not str(img_path).endswith(".jpg"):
+        raise ValueError("Expecting a .jpg input image.")
+
+    if output and shapefile_path is None:
+        raise ValueError("Output path must be specified if output=True.")
         
     img = extract_images.extract_image_from_file(img_path)
     img_array = extract_images.prepare_image(img, contrast_factor=contrast_factor)
-        
     
     if invert:
         img_array = extract_images.invert_image(img_array)
         
-    # Extract contours
+    if flood_fill:
+        extract_images.display_image(img_array, title='Displaying BEFORE Floodfill')
+        img_array = flood_fill_ocean(img_array)
+        extract_images.display_image(img_array, title='Displaying AFTER Floodfill')
+        
     print("Extracting contours...")
-    polygons = extract_contours(img_array, min_area, min_points, verbose=False)
+    polygons = extract_contours(img_array, min_area, min_points, verbose)
     print(f"✅ Detected {len(polygons)} polygons.")
-    
-    if output and output_path is None:
-       output_filename = f"{processing_group}_{date}.shp"
-       output_path = directories.SHAPEFILES_DIR / output_filename
-    
     if visualize:
-        visualize_shapefile(polygons)
+        visualize_shapefile(polygons, title=shapefile_path.stem)
+    
+    print("Building geodataframe and attaching metadata.")
+    gdf = build_geodataframe(polygons, metadata)
+    #Use plotly plot to have hover display metadata.
+    # if visualize:
+    #     visualize_shapefile(gdf)
         
     if output:
-        save_shapefile(polygons, output_path, processing_group)
+        gdf.to_file(shapefile_path)
+        print(f"✅ Shapefile written to: {shapefile_path}")
     
-    return {
-    "polygons": polygons,
-    "shapefile_path": output_path if output else None,
-    }
+    return gdf
 
 if __name__ == '__main__':
-    date = datetime.now().strftime('%m%d%y')
+    #CONSTANTS
+    DATE = datetime.now().strftime('%m%d%y')
+    OUTPUT=False
+    VISUALIZE=True
+    USER_DEBUG_MODE=False
     
+    # image_name = "SauceField2.jpg"
+    # img_path = directories.IMAGES_DIR / image_name
+    # extract_images.display_image(img_path, title=f'Original Image, {image_name}')
+    
+    
+    # shapefile_path = directories.SHAPEFILES_DIR / f"{image_name[:-3]}.shp"
+
+    # geo_df = image_to_shapefile(
+    #     img_path,
+    #     shapefile_path=shapefile_path,
+    #     visualize=True,
+    #     invert=False
+    # )
+    
+    #---------
+    #image variables    
+    image_basename = "baseland"
     version = "2"
     image_date = "03312025"
-    processing_level = 0
-    processing_group = 'baseland'
-
-    image_name = f"{processing_group}_{image_date}_{version}.jpg" #March 31st
+    image_name = f"{image_basename}_{image_date}_{version}.jpg" #March 31st
     img_path = directories.IMAGES_DIR / image_name
     
-    shapefile_path = directories.SHAPEFILES_DIR / f"{processing_group}_{date}.shp"
-    html_path = directories.DATA_DIR / f"{configs.WORLD_NAME}_{processing_level}_{date}.html"
+    extract_images.display_image(img_path, title=f'Original Image, {image_name}')
+    #---------
+    #metadata used in processing- later as systems develop move this to external .config files or another system for storing world processing parameters for all worlds not just Htrea
+    feature_types = ['baseland', 'inland_lakes_seas']
+    z_levels = [0, 0]
+    inversions = [False, True]#false- land (white), true-  water (white)
+    flood_fill = [False, True]#false- leave ocean as is, true- turns the ocean (0, 0) black (val-0) (removes ocean and anything connected to it)
     
-    #Full pipeline
-    polygons = image_to_shapefile(
-        img_path,
-        invert=False,
-        output=True,
-        output_path=shapefile_path,
-        visualize=True,
-        contrast_factor=2.0,
-        min_area=1.0,
-        min_points=3,
-        processing_level=processing_level,
-        processing_group=processing_group,
-    )['polygons']
+    #built in processing
+    geo_dfs = {}
+    shapefile_paths = {}
+    combined_fig = None #combined figure of all shapefiles being processed
+    #modified processing
+    completed_idx = []#[0] #deontes the indeces that we have processed, skip these while developing our systems
+    #---------
+    for idx, (feature_type, z_level, invert, flood_filled) in enumerate(zip(feature_types, z_levels, inversions, flood_fill)):
+        print(f"PROCESSING LAYER:\n{feature_type=}\n{z_level=}\n{flood_filled=}\n{invert=}")
+        if(idx in completed_idx):
+            continue
     
-    fig = world_viewer.plot_polygon_shapes_interactive(shapefile_path)
-    viewing_util.save_figure_to_html(fig, html_path)
+        metadata = {
+            "type": feature_type,
+            "level": z_level,
+            "source": img_path.name,
+        }
+        
+        shapefile_path = directories.SHAPEFILES_DIR / f"{feature_type}_{DATE}.shp"
+        html_path = directories.DATA_DIR / f"{configs.WORLD_NAME}_{feature_type}_{DATE}.html"
+        shapefile_paths[feature_type] = shapefile_path
+        
+        #run this feature through the image -> shapefile pipeline        
+        print(f"PROCESSING {feature_type}")
+        geo_dfs[feature_type] = image_to_shapefile(
+            img_path,
+            invert=invert,
+            output=OUTPUT,
+            shapefile_path=shapefile_path,
+            visualize=VISUALIZE,
+            metadata=metadata,
+            flood_fill=flood_fill
+        )
+        print(f"FINISHED processing {feature_type}")
+
+        # 👀 Get name of next feature if it exists
+        if idx + 1 < len(feature_types):
+            next_feature = feature_types[idx + 1]
+            if USER_DEBUG_MODE:
+                input(f'Press any key to continue to the next feature type ({next_feature}): ')
+        else:
+            print("✅ Finished all feature types!")
+        
+        #individual feature developed viewing
+        fig = world_viewer.plot_polygon_shapes_interactive(shapefile_path)
+        viewing_util.save_figure_to_html(fig, html_path, open_on_export=True)
+        
+        #further develop the figure with all features processed
+        combined_fig = world_viewer.plot_polygon_shapes_interactive(shapefile_path, combined_fig)
+    
+    combined_html_path = directories.DATA_DIR / f"{configs.WORLD_NAME}_{DATE}_PIPELINE.html"
+    viewing_util.save_figure_to_html(combined_fig, combined_html_path, open_on_export=True)
+    
+    

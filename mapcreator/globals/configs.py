@@ -2,6 +2,8 @@
 #WORLD CONFIGURATION
 #------------------
 WORLD_NAME = 'Htrae'
+# WORLD_NAME = 'Testasiia'
+
 #------------------
 
 #------------------
