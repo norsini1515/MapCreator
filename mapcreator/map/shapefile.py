@@ -29,10 +29,16 @@ from pathlib import Path
 from mapcreator.map.image_map_pre_edits import flood_fill_ocean
 from mapcreator import directories, configs
 import mapcreator.scripts.extract_images as extract_images
-from mapcreator import polygon_viewer, world_viewer
+from mapcreator import world_viewer
 from mapcreator.visualization import viewing_util
 
 VERBOSE = False
+
+image_basename = "baseland"
+version = "1"
+image_date = "04232025"
+image_name = f"{image_basename}_{image_date}_{version}.jpg" #April 23rd
+IMG_PATH = directories.IMAGES_DIR / image_name
 
 def extract_contours(img_array, min_area=configs.MIN_AREA, min_points=configs.MIN_POINTS,
                      verbose=VERBOSE):
@@ -171,7 +177,7 @@ def build_geodataframe(polygons, metadata=None):
     return gdf
 
 def image_to_shapefile(
-    img_path: Path,
+    IMG_PATH: Path,
     invert: bool = False,
     output: bool = False,
     shapefile_path: Path = None,
@@ -187,7 +193,7 @@ def image_to_shapefile(
     End-to-end pipeline to convert an image to a shapefile of extracted polygons.
 
     Args:
-        img_path (Path): Path to the input .jpg image.
+        IMG_PATH (Path): Path to the input .jpg image.
         invert (bool): Whether to invert image after binarization.
         output (bool): If True, save the shapefile.
         shapefile_path (Path): Where to save the shapefile if output=True.
@@ -200,13 +206,13 @@ def image_to_shapefile(
     Returns:
         GeoDataFrame
     """
-    if not str(img_path).endswith(".jpg"):
+    if not str(IMG_PATH).endswith(".jpg"):
         raise ValueError("Expecting a .jpg input image.")
 
     if output and shapefile_path is None:
         raise ValueError("Output path must be specified if output=True.")
         
-    img = extract_images.extract_image_from_file(img_path)
+    img = extract_images.extract_image_from_file(IMG_PATH)
     img_array = extract_images.prepare_image(img, contrast_factor=contrast_factor)
     
     if invert:
@@ -238,36 +244,16 @@ def image_to_shapefile(
 if __name__ == '__main__':
     #CONSTANTS
     DATE = datetime.now().strftime('%m%d%y')
-    OUTPUT=False
-    VISUALIZE=True
+    OUTPUT=True
+    VISUALIZE=False
     USER_DEBUG_MODE=False
-    
-    # image_name = "SauceField2.jpg"
-    # img_path = directories.IMAGES_DIR / image_name
-    # extract_images.display_image(img_path, title=f'Original Image, {image_name}')
-    
-    
-    # shapefile_path = directories.SHAPEFILES_DIR / f"{image_name[:-3]}.shp"
-
-    # geo_df = image_to_shapefile(
-    #     img_path,
-    #     shapefile_path=shapefile_path,
-    #     visualize=True,
-    #     invert=False
-    # )
-    
+        
     #---------
-    #image variables    
-    image_basename = "baseland"
-    version = "2"
-    image_date = "03312025"
-    image_name = f"{image_basename}_{image_date}_{version}.jpg" #March 31st
-    img_path = directories.IMAGES_DIR / image_name
-    
-    extract_images.display_image(img_path, title=f'Original Image, {image_name}')
+    #image variables       
+    extract_images.display_image(IMG_PATH, title=f'Original Image, {image_name}')
     #---------
     #metadata used in processing- later as systems develop move this to external .config files or another system for storing world processing parameters for all worlds not just Htrea
-    feature_types = ['baseland', 'inland_lakes_seas']
+    feature_types = ['land', 'lakes']
     z_levels = [0, 0]
     inversions = [False, True]#false- land (white), true-  water (white)
     flood_fill = [False, True]#false- leave ocean as is, true- turns the ocean (0, 0) black (val-0) (removes ocean and anything connected to it)
@@ -277,7 +263,7 @@ if __name__ == '__main__':
     shapefile_paths = {}
     combined_fig = None #combined figure of all shapefiles being processed
     #modified processing
-    completed_idx = []#[0] #deontes the indeces that we have processed, skip these while developing our systems
+    completed_idx = []# #deontes the indeces that we have processed, skip these while developing our systems
     #---------
     for idx, (feature_type, z_level, invert, flood_filled) in enumerate(zip(feature_types, z_levels, inversions, flood_fill)):
         print(f"PROCESSING LAYER:\n{feature_type=}\n{z_level=}\n{flood_filled=}\n{invert=}")
@@ -287,7 +273,7 @@ if __name__ == '__main__':
         metadata = {
             "type": feature_type,
             "level": z_level,
-            "source": img_path.name,
+            "source": IMG_PATH.name,
         }
         
         shapefile_path = directories.SHAPEFILES_DIR / f"{feature_type}_{DATE}.shp"
@@ -297,7 +283,7 @@ if __name__ == '__main__':
         #run this feature through the image -> shapefile pipeline        
         print(f"PROCESSING {feature_type}")
         geo_dfs[feature_type] = image_to_shapefile(
-            img_path,
+            IMG_PATH,
             invert=invert,
             output=OUTPUT,
             shapefile_path=shapefile_path,
@@ -315,12 +301,14 @@ if __name__ == '__main__':
         else:
             print("✅ Finished all feature types!")
         
+        # visualize_shapefile(shapefile_path)
+        
         #individual feature developed viewing
-        fig = world_viewer.plot_polygon_shapes_interactive(shapefile_path)
+        fig = world_viewer.plot_shapes(shapefile_path)
         viewing_util.save_figure_to_html(fig, html_path, open_on_export=True)
         
         #further develop the figure with all features processed
-        combined_fig = world_viewer.plot_polygon_shapes_interactive(shapefile_path, combined_fig)
+        combined_fig = world_viewer.plot_shapes(shapefile_path, combined_fig)
     
     combined_html_path = directories.DATA_DIR / f"{configs.WORLD_NAME}_{DATE}_PIPELINE.html"
     viewing_util.save_figure_to_html(combined_fig, combined_html_path, open_on_export=True)
