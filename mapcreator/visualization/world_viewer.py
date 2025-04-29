@@ -135,7 +135,7 @@ def plot_overlay(fig, overlay_data, color="red", name="overlay", size=6, width=2
         elif isinstance(geom, (LineString, MultiLineString)):
             lines = geom.geoms if isinstance(geom, MultiLineString) else [geom]
             for j, line in enumerate(lines):
-                x, y = line.xy
+                x, y = map(list, line.xy)
                 fig.add_trace(go.Scatter(
                     x=x, y=y,
                     mode="lines",
