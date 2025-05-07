@@ -28,6 +28,11 @@ GEOMETRY_METADATA = {
         "source": WORKING_WORLD_IMG_NAME,
         "invert": True,
         "flood_fill": True
+    },
+    "ocean": {
+        "type": "open-water",
+        "level": 0,
+        "source": "",
     }
 }
 
