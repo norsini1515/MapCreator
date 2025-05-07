@@ -3,7 +3,7 @@
 #------------------
 WORLD_NAME = 'Htrae'
 # WORLD_NAME = 'Testasiia'
-
+ROOT_DRIVE = 'F:'
 #------------------
 
 #------------------

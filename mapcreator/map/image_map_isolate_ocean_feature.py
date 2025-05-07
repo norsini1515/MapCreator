@@ -52,11 +52,13 @@ Future Extensions:
 - Spatial feature embedding for contextual classification.
 
 """
+import sys
 import numpy as np
 import pandas as pd
 import geopandas as gpd
 from pathlib import Path
 from typing import Union
+from shapely import geometry
 from shapely.geometry import Polygon, MultiPolygon, Point, box, LineString
 
 from mapcreator import world_viewer
@@ -68,22 +70,20 @@ from mapcreator.scripts.extract_images import extract_image_from_file
 
 def union_shapefile(land_shapefile_paths):
     """
-    Union all geometries from one or more shapefiles into a single geometry.
-
-    Args:
-        land_shapefile_paths (list[Path]): List of shapefile paths.
-
-    Returns:
-        Shapely geometry: Unified geometry of all land features.
+    Reads and unions all geometries from one or more shapefiles into a single-row GeoDataFrame.
+    Returns a GeoDataFrame for consistency across the module.
     """
-    all_land_geoms = []
+    all_geoms = []
+
     for path in land_shapefile_paths:
         gdf = gpd.read_file(path)
-        all_land_geoms.append(gdf.geometry)  # append GeoSeries, not just .geometry values
+        all_geoms.append(gdf.geometry)
 
-    # Concatenate into one GeoSeries and apply union_all
-    all_geoms_series = gpd.GeoSeries(pd.concat(all_land_geoms, ignore_index=True))
-    return all_geoms_series.union_all()
+    combined_series = gpd.GeoSeries(pd.concat(all_geoms, ignore_index=True))
+    unioned = combined_series.union_all()
+
+    # Wrap result in a GeoDataFrame for consistency
+    return gpd.GeoDataFrame({'geometry': [unioned]}, crs=gdf.crs)
 
 def generate_ocean_mask(
     land_shapefile_paths: Union[Path, list[Path]],
@@ -106,8 +106,7 @@ def generate_ocean_mask(
     elif not isinstance(land_shapefile_paths, list):
         raise TypeError("land_shapefile_paths must be a Path or a list of Paths.")
     
-    land_union = union_shapefile(land_shapefile_paths)
-    
+
     # Get image size or use default
     if image_path:
         img = extract_image_from_file(image_path)
@@ -119,7 +118,8 @@ def generate_ocean_mask(
     world_bbox = box(0, 0, width, height)
 
     # Subtract land polygons from the bounding box to isolate the ocean
-    ocean_geom = world_bbox.difference(land_union)
+    land_geom  = union_shapefile(land_shapefile_paths).geometry.iloc[0]
+    ocean_geom = world_bbox.difference(land_geom)
     
     #------
     print("Ocean Geometry Type:", type(ocean_geom))
@@ -177,75 +177,104 @@ def sample_coastline(ocean_df: gpd.GeoDataFrame, spacing: int = 15, sampling_met
 
     return sampled_points
 
-def draw_ray(start_point, angle, ocean_gdf, max_distance=2000):
+def _extract_intersection_points(geometry_obj):
     """
-    Attempts to draw a ray starting from a sample point at a given angle.
+    Helper to extract shapely Point geometries from a shapely or GeoSeries intersection.
+    """
+    if isinstance(geometry_obj, gpd.GeoSeries):
+        geoms = geometry_obj.tolist()
+    else:
+        geoms = [geometry_obj]
 
-    Args:
-        start_point (shapely.geometry.Point): Starting point (sampled from coastline).
-        angle (float): Angle in radians to cast the ray (0 radians = rightward).
-        ocean_gdf (GeoDataFrame): Water-only polygons to check valid ray paths.
-        max_distance (float): Maximum distance to extend the ray.
+    points = []
+    for g in geoms:
+        if g.is_empty:
+            continue
+        if isinstance(g, Point):
+            points.append(g)
+        elif hasattr(g, "geoms"):  # MultiPoint or GeometryCollection
+            points.extend([x for x in g.geoms if isinstance(x, Point)])
+
+    return points
+
+def draw_ray(start_point, angle, ocean_gdf, land_gdf=None, max_distance=2000, proximity_thresh=5):
+    """
+    Casts a ray and returns metadata only if it enters ocean first, then hits land or boundary.
+
+    Parameters:
+        start_point (Point): Origin point.
+        angle (float): Ray angle in radians.
+        ocean_gdf (GeoDataFrame): Water polygons (single-row expected).
+        land_gdf (GeoDataFrame, optional): Landmass polygons.
+        max_distance (float): Maximum ray length.
+        proximity_thresh (float): Max distance for ocean entry to count as valid.
 
     Returns:
-        dict: {
-            'start_x': float,
-            'start_y': float,
-            'end_x': float,
-            'end_y': float,
-            'angle': float,
-            'distance': float,
-            'hit_type': str ("coastline" or "boundary"),
-            'valid': bool
-        }
+        dict: Ray metadata with start, end, hit_type, and geometry if valid.
     """
-    # Create an initial long line
-    end_point = Point(
-        start_point.x + np.cos(angle) * max_distance,
-        start_point.y + np.sin(angle) * max_distance
-    )
+    from shapely.geometry import LineString, Point
+    from shapely import geometry
+
+    # Build ray
+    dx = np.cos(angle) * max_distance
+    dy = np.sin(angle) * max_distance
+    end_point = Point(start_point.x + dx, start_point.y + dy)
     ray = LineString([start_point, end_point])
-    # Check for intersection with ocean boundary
-    ocean_union = ocean_gdf.geometry.union_all()  # Assume one big ocean polygon
-    boundary = ocean_union.boundary
 
-    # Intersect ray with boundary
-    intersections = ray.intersection(boundary)
+    ocean_geom = ocean_gdf.geometry.iloc[0]
+    ocean_boundary = ocean_geom.boundary
 
-    final_end_point = end_point
-    hit_type = "boundary"
-    valid = False
+    # Get intersections
+    ocean_hits = _extract_intersection_points(ray.intersection(ocean_geom))
+    land_hits = _extract_intersection_points(land_gdf.intersection(ray)) if land_gdf is not None else []
+    boundary_hits = _extract_intersection_points(ray.intersection(ocean_boundary))
 
-    if not intersections.is_empty:
-        if intersections.geom_type == "MultiPoint":
-            # Multiple hits: choose the closest
-            points = list(intersections.geoms)
-        elif intersections.geom_type == "Point":
-            points = [intersections]
-        else:
-            points = []
+    # Label and combine all hits
+    hit_candidates = []
+    hit_candidates += [(pt, "ocean") for pt in ocean_hits]
+    hit_candidates += [(pt, "land") for pt in land_hits]
+    hit_candidates += [(pt, "boundary") for pt in boundary_hits]
 
-        if points:
-            # Find nearest intersection to the start
-            closest_point = min(points, key=lambda p: start_point.distance(p))
-            final_end_point = closest_point
-            hit_type = "coastline"
-            valid = True
+    # Sort by proximity to ray start
+    hit_candidates.sort(key=lambda item: start_point.distance(item[0]))
 
-    distance = start_point.distance(final_end_point)
-
-    return {
+    # Initialize output
+    result = {
         'start_x': start_point.x,
         'start_y': start_point.y,
-        'end_x': final_end_point.x,
-        'end_y': final_end_point.y,
-        'angle': np.degrees(angle),  # Record in degrees for easier viewing
-        'distance': distance,
-        'hit_type': hit_type,
-        'valid': valid,
+        'end_x': end_point.x,
+        'end_y': end_point.y,
+        'angle': np.degrees(angle),
+        'distance': 0,
+        'hit_type': None,
+        'valid': False,
     }
 
-def build_ray_dataset(ocean_gdf, sampled_points,
+    if not hit_candidates:
+        return result
+
+    first_point, first_type = hit_candidates[0]
+
+    # Check that first hit is ocean and within threshold
+    if first_type != "ocean" or start_point.distance(first_point) > proximity_thresh:
+        return result
+
+    # Now find the *next* feature hit (land or boundary) AFTER ocean
+    for pt, hit_type in hit_candidates[1:]:
+        if hit_type in ("land", "boundary"):
+            result.update({
+                'end_x': pt.x,
+                'end_y': pt.y,
+                'distance': start_point.distance(pt),
+                'hit_type': hit_type,
+                'valid': True,
+            })
+            break
+
+    return result
+
+
+def build_ray_dataset(ocean_gdf, land_gdf, sampled_points,
                       angle_step=15, max_distance=2000):
     ray_records = []
 
@@ -258,7 +287,8 @@ def build_ray_dataset(ocean_gdf, sampled_points,
         for angle_deg in range(0, 360, angle_step):
             angle_rad = np.radians(angle_deg)
 
-            ray_info = draw_ray(point, angle_rad, ocean_gdf, max_distance=max_distance)
+            ray_info = draw_ray(point, angle_rad, ocean_gdf, land_gdf,
+                                max_distance=max_distance)
             ray_info['sample_index'] = i  # Which sample point it came from
             
             # Build geometry
@@ -274,32 +304,80 @@ def build_ray_dataset(ocean_gdf, sampled_points,
 
     return ray_gdf
 
+def generate_rays_df(coastline_points, ocean_gdf, land_gdf=None, m=32, max_distance=2000, proximity_thresh=5):
+    """
+    Generate a GeoDataFrame of valid rays from coastline points into ocean space.
+
+    Parameters:
+        coastline_points (list[Point]): Starting points along the coastline.
+        ocean_gdf (GeoDataFrame): Ocean geometry (should be single-row).
+        land_gdf (GeoDataFrame, optional): Land geometry for detecting land hits.
+        m (int): Number of rays per point.
+        max_distance (float): Maximum ray length.
+        proximity_thresh (float): Max distance from start to initial ocean hit.
+
+    Returns:
+        GeoDataFrame: Rays with metadata and geometry.
+    """
+    ray_records = []
+
+    for i, point in enumerate(coastline_points):
+        if(i == 15):
+            print('enough for now')
+            break
+        for j, angle in enumerate(np.linspace(0, 2 * np.pi, m, endpoint=False)):
+            ray_info = draw_ray(
+                start_point=point,
+                angle=angle,
+                ocean_gdf=ocean_gdf,
+                land_gdf=land_gdf,
+                max_distance=max_distance,
+                proximity_thresh=proximity_thresh
+            )
+            # print(i, angle, ray_info["valid"])
+            if ray_info["valid"]:
+                ray_info["start"] = geometry.Point(ray_info["start_x"], ray_info["start_y"])
+                ray_info["end"] = geometry.Point(ray_info["end_x"], ray_info["end_y"])
+                ray_info["sample_index"] = i
+                ray_info["angle_index"] = j
+                ray_info["geometry"] = LineString([ray_info["start"], ray_info["end"]])
+                ray_records.append(ray_info)
+
+    return gpd.GeoDataFrame(ray_records, crs=ocean_gdf.crs)
+
 
 if __name__ == '__main__':
     input_date = "042325"
     LAND_SHAPEFILE = f"land_{input_date}.shp"
+    DRAW_FIG = True
     
     shapefile_path = directories.SHAPEFILES_DIR / LAND_SHAPEFILE
     # fig = world_viewer.plot_shapes(shapefile_path)
     # html_path = directories.DATA_DIR / f"{configs.WORLD_NAME}_input_landfiles.html"
     # viewing_util.save_figure_to_html(fig, html_path, open_on_export=True)
-
+    land_gdf = union_shapefile([shapefile_path])
     ocean_df = generate_ocean_mask(shapefile_path, shapefiles.IMG_PATH)
+    # print('land_df:', type(land_gdf), "\nocean_df: ", type(ocean_df))
+    # sys.exit()
     # print(ocean_df.head(5))
     # shapefiles.visualize_shapefile(ocean_df)
     # exit()
-    
-    fig = world_viewer.plot_shapes(ocean_df)
-    fig = world_viewer.plot_shapes(shapefile_path, fig)
+    if DRAW_FIG:
+        fig = world_viewer.plot_shapes(ocean_df)
+        fig = world_viewer.plot_shapes(shapefile_path, fig)
     
     sampled_points = sample_coastline(ocean_df)
     print('sampled points:', len(sampled_points))
-    fig = world_viewer.plot_overlay(fig, sampled_points, color="red", name="sample_points", size=3)
     
-    ray_df = build_ray_dataset(ocean_df, sampled_points)
+    if DRAW_FIG:
+        fig = world_viewer.plot_overlay(fig, sampled_points, color="red", name="sample_points", size=5)
+    
+    # ray_df = build_ray_dataset(ocean_df, land_gdf, sampled_points)
+    ray_df = generate_rays_df(sampled_points, ocean_df, land_gdf=land_gdf, m=32, max_distance=2000, proximity_thresh=5)
     print('ray_df:', ray_df.shape)
+    print(ray_df[['start', 'end', 'geometry']].head())
     
-    fig = world_viewer.plot_overlay(fig, ray_df, color="orange", name="rays", width=2)
+    fig = world_viewer.plot_overlay(fig, ray_df, color="orange", name="rays", width=1)
 
     html_path = directories.DATA_DIR / f"{configs.WORLD_NAME}_ocean_mask.html"
     viewing_util.save_figure_to_html(fig, html_path, open_on_export=False)
