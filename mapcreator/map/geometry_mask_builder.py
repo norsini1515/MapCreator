@@ -63,7 +63,6 @@ from shapely.geometry import Polygon, MultiPolygon, Point, box, LineString
 
 from mapcreator import world_viewer
 from mapcreator import directories, configs
-import mapcreator.map.shapefile as shapefiles
 from mapcreator.visualization import viewing_util
 from mapcreator.scripts.extract_images import get_image_dimensions
 
@@ -267,7 +266,8 @@ if __name__ == '__main__':
     # viewing_util.save_figure_to_html(fig, html_path, open_on_export=True)
     land_gdf = union_shapefile([shapefile_path])
 
-    image_width, image_height = get_image_dimensions(shapefiles.IMG_PATH)
+    IMG_PATH = directories.IMAGES_DIR / configs.WORKING_WORLD_IMG_NAME
+    image_width, image_height = get_image_dimensions(IMG_PATH)
     ocean_df = generate_voided_extent(shapefile_path, dimensions=(image_width, image_height))
     
     if DRAW_FIG:

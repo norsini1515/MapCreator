@@ -1,1 +1,1 @@
-from .shapefile import image_to_shapefile, visualize_shapefile, build_geodataframe, IMG_PATH
+from .build_base_geometries import image_to_geometry_pipeline, visualize_shapefile, build_geodataframe

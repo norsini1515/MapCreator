@@ -2,9 +2,7 @@ import os
 import cv2
 import numpy as np
 from pathlib import Path
-from mapcreator import directories
 from PIL import ImageEnhance, Image
-
 '''
 Use Pillow to load your map image and apply initial adjustments.
 Convert the image into an OpenCV-compatible format (e.g., numpy array).
@@ -12,14 +10,11 @@ Use OpenCV for edge detection and contour tracing.
 Save results using either library.
 '''
 
-
 def extract_image_from_file(file_path):
     """
     Extract and process an image from a file.
-
     Args:
         file_path: Path to the image file.
-
     Returns:
         Processed Pillow image object.
     """
@@ -73,7 +68,7 @@ def prepare_image(img, contrast_factor=2.0):
     
     img_array = np.array(binarized).astype(np.uint8) * 255
     
-    return invert_image(img_array)
+    return np.abs(255 - img_array)
 
 def display_image(image, title="", output=False, resize=False, resize_dim=(1000, 1000), contrast_factor=2.0):
     """
@@ -100,10 +95,6 @@ def display_image(image, title="", output=False, resize=False, resize_dim=(1000,
     else:
         raise TypeError("Input must be a NumPy array or path to image file.")
 
-    # # Normalize binary image to uint8
-    # if img_array.max() <= 1:
-    #     img_array = (img_array * 255).astype(np.uint8)
-
     display_img = cv2.resize(img_array, resize_dim) if resize else img_array.copy()
     
     print(f'DISPLAYING \"{title.upper()}\"\nclose the window to conitnue.')
@@ -111,13 +102,6 @@ def display_image(image, title="", output=False, resize=False, resize_dim=(1000,
     cv2.waitKey(0)
     cv2.destroyAllWindows()
 
-    if output:
-        output_name = title or "processed_image"
-        output_path = directories.IMAGES_DIR / f"{output_name}.jpg"
-        os.makedirs(output_path.parent, exist_ok=True)
-        cv2.imwrite(str(output_path), display_img)
-        print(f"✅ Saved debug image to: {output_path}")
-    
 def image_array_coords(img_array, value=255):
     """
     Extract coordinates of all cells in the image array that are not value (default 255, white).
@@ -134,12 +118,16 @@ def image_array_coords(img_array, value=255):
     # Convert to a list of tuples (x, y)
     return coords[:, [1, 0]].astype(int)
 
-def invert_image(img_array):
-    return np.abs(255 - img_array)
+def save_image(img_array, output_path, resize_dim=(1000, 1000), resize=True):
+    save_img = cv2.resize(img_array, resize_dim) if resize else img_array.copy()
+    os.makedirs(output_path.parent, exist_ok=True)
+    cv2.imwrite(str(output_path), save_img)
+    print(f"✅ Saved debug image to: {output_path}")
+
 
 if __name__ == '__main__':
     # Load the landmass base map
-    landmass_base_map = directories.IMAGES_DIR / "old_images/landamass_drawing_base.jpg"
+    landmass_base_map = "<PATH>/landamass_drawing_base.jpg"
     img = extract_image_from_file(landmass_base_map)
     img_array = prepare_image(img, contrast_factor=2.0)
     

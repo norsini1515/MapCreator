@@ -26,18 +26,12 @@ from shapely.geometry import Polygon, MultiPolygon
 from shapely.validation import explain_validity
 from pathlib import Path
 
-from mapcreator import directories, configs, flood_fill_img
-import mapcreator.scripts.extract_images as extract_images
+from mapcreator import directories, configs, preprocess_image
+from mapcreator.scripts import extract_images
 from mapcreator import world_viewer
 from mapcreator.visualization import viewing_util
 
 VERBOSE = False
-
-image_basename = "baseland"
-version = "1"
-image_date = "04232025"
-image_name = f"{image_basename}_{image_date}_{version}.jpg" #April 23rd
-IMG_PATH = directories.IMAGES_DIR / image_name
 
 def extract_contours(img_array, min_area=configs.MIN_AREA, min_points=configs.MIN_POINTS,
                      verbose=VERBOSE):
@@ -175,24 +169,19 @@ def build_geodataframe(polygons, metadata=None):
     
     return gdf
 
-def image_to_shapefile(
-    IMG_PATH: Path,
-    invert: bool = False,
-    output: bool = False,
-    shapefile_path: Path = None,
+def image_to_geometry_pipeline(
+    img_path: Path,
+    metadata: dict = None,
     visualize: bool = True, 
     contrast_factor: float = 2.0, 
     min_area: float = 1.0, 
     min_points: int = 3, 
-    metadata: dict = None,
-    flood_fill: bool=False,
-    verbose: bool=VERBOSE
     ):
     """
     End-to-end pipeline to convert an image to a shapefile of extracted polygons.
 
     Args:
-        IMG_PATH (Path): Path to the input .jpg image.
+        img_path (Path): Path to the input .jpg image.
         invert (bool): Whether to invert image after binarization.
         output (bool): If True, save the shapefile.
         shapefile_path (Path): Where to save the shapefile if output=True.
@@ -205,40 +194,56 @@ def image_to_shapefile(
     Returns:
         GeoDataFrame
     """
-    if not str(IMG_PATH).endswith(".jpg"):
-        raise ValueError("Expecting a .jpg input image.")
-
-    if output and shapefile_path is None:
-        raise ValueError("Output path must be specified if output=True.")
-        
-    img = extract_images.extract_image_from_file(IMG_PATH)
-    img_array = extract_images.prepare_image(img, contrast_factor=contrast_factor)
-    
-    if invert:
-        img_array = extract_images.invert_image(img_array)
-        
-    if flood_fill:
-        extract_images.display_image(img_array, title='Displaying BEFORE Floodfill')
-        img_array = flood_fill_img(img_array)
-        extract_images.display_image(img_array, title='Displaying AFTER Floodfill')
-        
+     # --- Step 1: Preprocess Image ---
+    print("Preprocessing image")
+    img_array = preprocess_image(
+        img_path,
+        contrast_factor=contrast_factor,
+        invert=metadata.get("invert", False),
+        flood_fill=metadata.get("flood_fill", False),
+    )
+    # --- Step 2: Extract Polygons ---
     print("Extracting contours...")
-    polygons = extract_contours(img_array, min_area, min_points, verbose)
-    print(f"✅ Detected {len(polygons)} polygons.")
-    if visualize:
-        visualize_shapefile(polygons, title=shapefile_path.stem)
-    
+    polygons = extract_contours(img_array, min_area=min_area, min_points=min_points)
+    print(f"Detected {len(polygons)} polygons.")
+
+    # --- Step 3: Wrap into GeoDataFrame ---
     print("Building geodataframe and attaching metadata.")
     gdf = build_geodataframe(polygons, metadata)
-    #Use plotly plot to have hover display metadata.
-    # if visualize:
-    #     visualize_shapefile(gdf)
-        
-    if output:
-        gdf.to_file(shapefile_path)
-        print(f"✅ Shapefile written to: {shapefile_path}")
-    
+
+    if visualize:
+        visualize_shapefile(gdf, title=img_path.name)
+
     return gdf
+
+def export_geometry(
+    gdf: gpd.GeoDataFrame,
+    output_path: Path,
+    driver: str = None,
+):
+    """
+    Export a GeoDataFrame to GeoJSON or Shapefile based on file extension.
+
+    Args:
+        gdf (GeoDataFrame): The data to export.
+        output_path (Path): File path ending in .geojson or .shp.
+        driver (str): Optional override for driver (e.g., "GeoJSON", "ESRI Shapefile").
+
+    Raises:
+        ValueError: If file extension is unsupported and no driver is specified.
+    """
+    ext = output_path.suffix.lower()
+
+    if not driver:
+        if ext == ".geojson":
+            driver = "GeoJSON"
+        elif ext == ".shp":
+            driver = "ESRI Shapefile"
+        else:
+            raise ValueError(f"Unsupported extension '{ext}'. Specify a driver explicitly.")
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    gdf.to_file(output_path, driver=driver)
 
 if __name__ == '__main__':
     #CONSTANTS
@@ -246,70 +251,31 @@ if __name__ == '__main__':
     OUTPUT=True
     VISUALIZE=False
     USER_DEBUG_MODE=False
-        
+    
+    IMG_PATH = directories.IMAGES_DIR / configs.WORKING_WORLD_IMG_NAME
     #---------
     #image variables       
-    extract_images.display_image(IMG_PATH, title=f'Original Image, {image_name}')
+    extract_images.display_image(IMG_PATH, title=f'Original Image, {configs.WORKING_WORLD_IMG_NAME}')
     #---------
-    #metadata used in processing- later as systems develop move this to external .config files or another system for storing world processing parameters for all worlds not just Htrea
-    feature_types = ['land', 'lakes']
-    z_levels = [0, 0]
-    inversions = [False, True]#false- land (white), true-  water (white)
-    flood_fill = [False, True]#false- leave ocean as is, true- turns the ocean (0, 0) black (val-0) (removes ocean and anything connected to it)
     
-    #built in processing
-    geo_dfs = {}
-    shapefile_paths = {}
     combined_fig = None #combined figure of all shapefiles being processed
-    #modified processing
-    completed_idx = []# #deontes the indeces that we have processed, skip these while developing our systems
     #---------
-    for idx, (feature_type, z_level, invert, flood_filled) in enumerate(zip(feature_types, z_levels, inversions, flood_fill)):
-        print(f"PROCESSING LAYER:\n{feature_type=}\n{z_level=}\n{flood_filled=}\n{invert=}")
-        if(idx in completed_idx):
-            continue
     
-        metadata = {
-            "type": feature_type,
-            "level": z_level,
-            "source": IMG_PATH.name,
-        }
-        
-        shapefile_path = directories.SHAPEFILES_DIR / f"{feature_type}_{DATE}.shp"
-        html_path = directories.DATA_DIR / f"{configs.WORLD_NAME}_{feature_type}_{DATE}.html"
-        shapefile_paths[feature_type] = shapefile_path
-        
-        #run this feature through the image -> shapefile pipeline        
-        print(f"PROCESSING {feature_type}")
-        geo_dfs[feature_type] = image_to_shapefile(
-            IMG_PATH,
-            invert=invert,
-            output=OUTPUT,
-            shapefile_path=shapefile_path,
-            visualize=VISUALIZE,
-            metadata=metadata,
-            flood_fill=flood_fill
-        )
-        print(f"FINISHED processing {feature_type}")
-
-        # 👀 Get name of next feature if it exists
-        if idx + 1 < len(feature_types):
-            next_feature = feature_types[idx + 1]
-            if USER_DEBUG_MODE:
-                input(f'Press any key to continue to the next feature type ({next_feature}): ')
-        else:
-            print("✅ Finished all feature types!")
-        
-        # visualize_shapefile(shapefile_path)
-        
-        #individual feature developed viewing
-        fig = world_viewer.plot_shapes(shapefile_path)
-        viewing_util.save_figure_to_html(fig, html_path, open_on_export=True)
-        
-        #further develop the figure with all features processed
-        combined_fig = world_viewer.plot_shapes(shapefile_path, combined_fig)
+    print('processing base land geometry')
+    land_meta = configs.GEOMETRY_METADATA["land"].copy()
+    land_img = directories.IMAGES_DIR / land_meta['source']
+    land_geometry_path = directories.SHAPEFILES_DIR / f"land_{DATE}.geojson"
+    land_gdf = image_to_geometry_pipeline(land_img, visualize=VISUALIZE, metadata=land_meta)
+    export_geometry(land_gdf, land_geometry_path)
     
-    combined_html_path = directories.DATA_DIR / f"{configs.WORLD_NAME}_{DATE}_PIPELINE.html"
+    print('processing internal water geometry')
+    lakes_meta = configs.GEOMETRY_METADATA["lakes"].copy()
+    lakes_img = directories.IMAGES_DIR / land_meta['source']
+    lakes_geometry_path = directories.SHAPEFILES_DIR / f"lakes_{DATE}.geojson"
+    lakes_gdf = image_to_geometry_pipeline(lakes_img, visualize=VISUALIZE, metadata=lakes_meta)
+    export_geometry(lakes_gdf, lakes_geometry_path)
+    
+    combined_fig = world_viewer.plot_shapes(land_gdf)
+    combined_fig = world_viewer.plot_shapes(lakes_gdf, combined_fig)
+    combined_html_path = directories.DATA_DIR / f"{configs.WORLD_NAME}_base_geometries_{DATE}.html"
     viewing_util.save_figure_to_html(combined_fig, combined_html_path, open_on_export=True)
-    
-    
