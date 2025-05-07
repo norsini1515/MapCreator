@@ -1,10 +1,10 @@
 import pathlib as pl
 from mapcreator.globals import configs
 
-BASE_DIR = pl.Path(f"{configs.ROOT_DRIVE}/DnD/WorldBuilding/MapCreator")
+BASE_DIR = pl.Path(f"{configs.ROOT_DRIVE}/MapCreator")
 
-# DATA_DIR = pl.Path(f"{configs.ROOT_DRIVE}/DnD/WorldBuilding/map_data/{configs.WORLD_NAME}")
-DATA_DIR = pl.Path(f"{configs.ROOT_DRIVE}/DnD/WorldBuilding/MapCreator/data")
+# DATA_DIR = pl.Path(f"{configs.ROOT_DRIVE}/map_data/{configs.WORLD_NAME}")
+DATA_DIR = BASE_DIR / "data"
 
 IMAGES_DIR = DATA_DIR / 'images'
 SHAPEFILES_DIR = DATA_DIR / "shapefiles"

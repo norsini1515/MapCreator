@@ -13,7 +13,7 @@ def save_figure_to_html(fig, output_html, open_on_export=False):
     output_html = Path(output_html)
     output_html.parent.mkdir(parents=True, exist_ok=True)
     fig.write_html(str(output_html))
-    print(f"✅ Saved HTML to: {output_html}")
+    print(f"Saved HTML to: {output_html}")
     
     if open_on_export:
         # Open the HTML file in the default browser
