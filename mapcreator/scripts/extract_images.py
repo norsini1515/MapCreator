@@ -33,6 +33,10 @@ def extract_image_from_file(file_path):
         raise
     return img.copy()
 
+def get_image_dimensions(image_path: Path):
+    img = extract_image_from_file(image_path)
+    return img.width, img.height
+
 def binarize_img(img, threshold=120):
     """
     Binarize an image by converting it to black and white.

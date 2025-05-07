@@ -26,8 +26,7 @@ from shapely.geometry import Polygon, MultiPolygon
 from shapely.validation import explain_validity
 from pathlib import Path
 
-from mapcreator.map.image_map_pre_edits import flood_fill_ocean
-from mapcreator import directories, configs
+from mapcreator import directories, configs, flood_fill_img
 import mapcreator.scripts.extract_images as extract_images
 from mapcreator import world_viewer
 from mapcreator.visualization import viewing_util
@@ -220,7 +219,7 @@ def image_to_shapefile(
         
     if flood_fill:
         extract_images.display_image(img_array, title='Displaying BEFORE Floodfill')
-        img_array = flood_fill_ocean(img_array)
+        img_array = flood_fill_img(img_array)
         extract_images.display_image(img_array, title='Displaying AFTER Floodfill')
         
     print("Extracting contours...")
