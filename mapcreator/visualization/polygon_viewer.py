@@ -20,6 +20,13 @@ def plot_single_polygon(polygon, index=0):
     
     ax.set_title(f"Polygon {index}")
     plt.show()
+    
+    # print(f"Polygon #{i} Details:")
+    # print(f" - Area: {polygon.area:.2f}")
+    # print(f" - Bounds: {polygon.bounds}")
+    # print(f" - Number of Points: {len(polygon.exterior.coords)}")
+    # print(f" - Valid: {polygon.is_valid}")
+    # print(f" - Coordinates: {list(polygon.exterior.coords)}")
 
 def plot_polygons_separately(shapefile_path):
     """

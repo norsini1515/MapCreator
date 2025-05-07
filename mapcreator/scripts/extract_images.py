@@ -1,9 +1,9 @@
 import os
 import cv2
 import numpy as np
-from PIL import ImageEnhance, Image
-
+from pathlib import Path
 from mapcreator import directories
+from PIL import ImageEnhance, Image
 
 '''
 Use Pillow to load your map image and apply initial adjustments.
@@ -48,8 +48,7 @@ def binarize_img(img, threshold=120):
         Binarized Pillow image object.
     """
     
-    img = img.point(lambda p: 0 if p > threshold else 255, mode="1")
-    return img
+    return img.point(lambda p: 0 if p > threshold else 255, mode="1")
     
 def prepare_image(img, contrast_factor=2.0):
     """
@@ -66,36 +65,54 @@ def prepare_image(img, contrast_factor=2.0):
     enhancer = ImageEnhance.Contrast(img)
     img = enhancer.enhance(contrast_factor)  # Adjustable contrast factor
     
-    img = binarize_img(img)
-    img = np.array(img).astype(np.uint8) * 255
+    binarized = binarize_img(img)
     
-    return img
+    img_array = np.array(binarized).astype(np.uint8) * 255
+    
+    return invert_image(img_array)
 
-def display_image(title, img_array, output=False, resize_dim=(1000, 1000)):
+def display_image(image, title="", output=False, resize=False, resize_dim=(1000, 1000), contrast_factor=2.0):
     """
-    Display and optionally save an image.
+    Display a processed image from a file path or NumPy array.
 
     Args:
-        title: Title of the window and filename.
-        img_array: Image as a NumPy array.
-        output: Whether to save the image (default=True).
-        resize_dim: Dimensions to resize for display (default=(800, 800)).
+        image (Path | str | np.ndarray): Path to image file or preprocessed NumPy array.
+        title (str): Title for display and optional save file.
+        output (bool): Whether to save the image.
+        resize (bool): Whether to resize for display.
+        resize_dim (tuple): Dimensions for resizing (default: (1000, 1000)).
+        contrast_factor (float): Only applies when loading from file.
     """
-    # Normalize binary images to uint8
-    if img_array.max() <= 1:
-        img_array = (img_array * 255).astype(np.uint8)
+    if isinstance(image, (str, Path)):
+        img_path = Path(image)
+        img_array = prepare_image(
+                        extract_image_from_file(img_path),
+                        contrast_factor=contrast_factor
+                    )
+        
+    elif isinstance(image, np.ndarray):
+        img_array = image
+        
+    else:
+        raise TypeError("Input must be a NumPy array or path to image file.")
+
+    # # Normalize binary image to uint8
+    # if img_array.max() <= 1:
+    #     img_array = (img_array * 255).astype(np.uint8)
+
+    display_img = cv2.resize(img_array, resize_dim) if resize else img_array.copy()
     
-    # Resize and display
-    resized_img = cv2.resize(img_array, resize_dim)
-    cv2.imshow(title, resized_img)
+    print(f'DISPLAYING \"{title.upper()}\"\nclose the window to conitnue.')
+    cv2.imshow(title or "Image", display_img)
     cv2.waitKey(0)
     cv2.destroyAllWindows()
-    
-    # Save the image if output is True
+
     if output:
-        output_path = directories.IMAGES_DIR / f"{title}.jpg"
+        output_name = title or "processed_image"
+        output_path = directories.IMAGES_DIR / f"{output_name}.jpg"
         os.makedirs(output_path.parent, exist_ok=True)
-        cv2.imwrite(str(output_path), resized_img)
+        cv2.imwrite(str(output_path), display_img)
+        print(f"✅ Saved debug image to: {output_path}")
     
 def image_array_coords(img_array, value=255):
     """
@@ -120,9 +137,7 @@ if __name__ == '__main__':
     # Load the landmass base map
     landmass_base_map = directories.IMAGES_DIR / "old_images/landamass_drawing_base.jpg"
     img = extract_image_from_file(landmass_base_map)
-    img = prepare_image(img, contrast_factor=2.0)
-    
-    img_array = np.array(img).astype(np.uint8) * 255  # Convert binary image to uint8
+    img_array = prepare_image(img, contrast_factor=2.0)
     
     display_image("Preprocessed Image", img_array)
     
