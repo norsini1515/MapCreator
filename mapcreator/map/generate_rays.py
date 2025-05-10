@@ -1,5 +1,12 @@
+import numpy as np
 import geopandas as gpd
 from shapely.geometry import Point, box, LineString
+from mapcreator import directories, configs, world_viewer
+from mapcreator.map import export_geometry, union_geo_files
+from mapcreator.visualization import viewing_util
+from mapcreator.scripts.extract_images import get_image_dimensions
+import sys
+
 
 def sample_perimeter_points(ocean_df: gpd.GeoDataFrame, spacing: int = 15, sampling_method: int = 1) -> list[Point]:
     """
@@ -127,3 +134,48 @@ def generate_rays_df(
                 ray_records.append(ray_info)
 
     return gpd.GeoDataFrame(ray_records, crs=ocean_gdf.crs)
+
+
+if __name__ == '__main__':
+    DRAW_FIG = True
+    input_date = "050725"
+
+    LAND_GEOJSON = f"land_{input_date}.geojson"
+    land_path = directories.SHAPEFILES_DIR / LAND_GEOJSON
+    
+    OCEAN_GEOJSON = f"ocean_{input_date}.geojson"
+    ocean_path = directories.SHAPEFILES_DIR / OCEAN_GEOJSON
+
+    land_gdf = union_geo_files([land_path])
+    ocean_gdf = gpd.read_file(ocean_path)
+    
+    print('land_gdf', land_gdf.shape, f'\ncolumns: {land_gdf.columns.tolist()}')
+    print()
+    print('ocean_gdf', ocean_gdf.shape, f'\ncolumns: {ocean_gdf.columns.tolist()}')
+
+
+    sampled_coastline_points = sample_perimeter_points(ocean_gdf)
+    print('sampled coastline points:', len(sampled_coastline_points))
+    
+    if DRAW_FIG:
+        fig = world_viewer.plot_shapes(ocean_gdf)
+        fig = world_viewer.plot_shapes(land_gdf, fig)
+        # fig = world_viewer.plot_overlay(fig, sampled_coastline_points, color="red", name="sample_points", size=5)
+
+    IMG_PATH = directories.IMAGES_DIR / configs.WORKING_WORLD_IMG_NAME
+    image_width, image_height = get_image_dimensions(IMG_PATH)
+    
+    print('generating rays . . .')
+    ray_df = generate_rays_df(sampled_coastline_points, ocean_gdf, land_gdf=land_gdf, m=32, 
+                              max_distance=2000, proximity_thresh=5, dimensions=(image_width, image_height))
+    print('ray_df:', ray_df.shape)
+    print(ray_df[['start', 'end', 'geometry']].head())
+    
+    if DRAW_FIG:
+        fig = world_viewer.plot_overlay(fig, ray_df, color="orange", name="rays", width=1)
+
+    if DRAW_FIG:
+        html_path = directories.DATA_DIR / f"{configs.WORLD_NAME}_test_output.html"
+        viewing_util.save_figure_to_html(fig, html_path, open_on_export=True)
+
+    ray_df.to_file(directories.DATA_DIR / f"ocean_ray_dataset_{input_date}.geojson", driver="GeoJSON")

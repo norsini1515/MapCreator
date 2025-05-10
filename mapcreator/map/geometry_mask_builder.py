@@ -60,8 +60,7 @@ from pathlib import Path
 from typing import Union
 from shapely.geometry import Polygon, MultiPolygon, box
 
-from mapcreator import world_viewer
-from mapcreator import directories, configs
+from mapcreator import directories, configs, world_viewer
 from mapcreator.map import export_geometry
 from mapcreator.visualization import viewing_util
 from mapcreator.scripts.extract_images import get_image_dimensions
@@ -83,10 +82,8 @@ def union_geo_files(land_shapefile_paths):
     # Wrap result in a GeoDataFrame for consistency
     return gpd.GeoDataFrame({'geometry': [unioned]}, crs=gdf.crs)
 
-def generate_voided_extent(
-    geo_file_paths: Union[Path, list[Path]],
-    dimensions: tuple = (1200, 1200)
-) -> gpd.GeoDataFrame:
+def generate_voided_extent(geo_file_paths: Union[Path, list[Path]],
+                            dimensions: tuple = (1200, 1200)) -> gpd.GeoDataFrame:
     """
     Generate a polygon layer representing the true ocean by subtracting land from the full image extent.
 
@@ -133,41 +130,19 @@ if __name__ == '__main__':
     DRAW_FIG = True
     
     geo_file_path = directories.SHAPEFILES_DIR / LAND_GEOJSON
-    # fig = world_viewer.plot_shapes(shapefile_path)
-    # html_path = directories.DATA_DIR / f"{configs.WORLD_NAME}_input_landfiles.html"
-    # viewing_util.save_figure_to_html(fig, html_path, open_on_export=True)
     land_gdf = union_geo_files([geo_file_path])
+    
 
     IMG_PATH = directories.IMAGES_DIR / configs.WORKING_WORLD_IMG_NAME
     image_width, image_height = get_image_dimensions(IMG_PATH)
-    ocean_df = generate_voided_extent(geo_file_path, dimensions=(image_width, image_height))
+    ocean_gdf = generate_voided_extent(geo_file_path, dimensions=(image_width, image_height))
 
     if DRAW_FIG:
-        fig = world_viewer.plot_shapes(ocean_df)
-        fig = world_viewer.plot_shapes(geo_file_path, fig)
+        fig = world_viewer.plot_shapes(ocean_gdf)
+        fig = world_viewer.plot_shapes(land_gdf, fig)
     
+    ocean_path = directories.SHAPEFILES_DIR / f"ocean_{input_date}.geojson"
+    export_geometry(ocean_gdf, ocean_path)
     
-    print('quitting')
-    import sys
-    sys.exit()
-
-    sampled_coastline_points = sample_perimeter_points(ocean_df)
-    print('sampled coastline points:', len(sampled_coastline_points))
-    
-    if DRAW_FIG:
-        fig = world_viewer.plot_overlay(fig, sampled_coastline_points, color="red", name="sample_points", size=5)
-    
-    print('generating rays')
-    ray_df = generate_rays_df(sampled_coastline_points, ocean_df, land_gdf=land_gdf, m=32, 
-                              max_distance=2000, proximity_thresh=5, dimensions=(image_width, image_height))
-    print('ray_df:', ray_df.shape)
-    print(ray_df[['start', 'end', 'geometry']].head())
-    
-    if DRAW_FIG:
-        fig = world_viewer.plot_overlay(fig, ray_df, color="orange", name="rays", width=1)
-
     html_path = directories.DATA_DIR / f"{configs.WORLD_NAME}_ocean_mask.html"
     viewing_util.save_figure_to_html(fig, html_path, open_on_export=True)
-
-    ray_df.to_file(directories.DATA_DIR / f"ocean_ray_dataset_{input_date}.geojson", driver="GeoJSON")
-
