@@ -41,6 +41,31 @@ We can even generate swatches and mockups when you're ready.
 
 
 
+"""
+3. **Neighborhood Analysis**:
+   For each sampled point, evaluate its local context using:
+   - Pinch Score: Based on spatial proximity and curvature.
+
+4. **Pinch Detection**:
+   Identify local maxima in pinch or constriction scores — these are potential feature dividers.
+
+5. **Seal Placement**:
+   Programmatically connect narrow gaps using synthetic "seal" lines that divide features.
+
+6. **Polygon Segmentation**:
+   Cut the ocean polygon using seals and relabel each resulting sub-polygon.
+
+7. **Output Classification**:
+   Return a GeoDataFrame or shapefile with each region labeled either as 'ocean' or 'connected_feature'.
+
+Future Extensions:
+------------------
+- Interactive labeling/validation in Dash.
+- Semi-supervised ML to refine classification heuristics.
+- User-placed seals with automatic refinement.
+- Spatial feature embedding for contextual classification.
+
+"""
 
 
 

@@ -1,55 +1,20 @@
 """
-🧭 image_map_isolate_ocean_feature_classifier.py
+🌊 geometry_mask_builder.py
 
-Module Purpose:
----------------
-This module is responsible for isolating and classifying water features that are 
-connected to the ocean — such as fjords, ravines, and coastal seas — from the main 
-ocean polygon. These features are identified from the ocean mask layer generated 
-by subtracting landmass from the full map extent.
+Purpose:
+--------
+Construct a voided extent (e.g., ocean mask) by subtracting hole geometries 
+(e.g., landmasses) from a full map bounding box.
 
-Key Goals:
-----------
-1. Generate an ocean mask from the landmass layer.
-2. Analyze the ocean polygon to identify candidate regions of interest.
-3. Detect "pinched" or enclosed water regions that are likely non-oceanic features.
-4. Programmatically place "seals" (dividers) between the ocean and candidate features.
-5. Split the ocean polygon using these seals and classify segments into:
-   - 'ocean' (still part of the main ocean polygon)
-   - 'connected_feature' (coastal sea, ravine, fjord, etc.)
-6. Output: A clean, labeled shapefile of ocean-connected features.
+Key Functions:
+--------------
+- union_geo_files: Combines multiple shapefiles or GeoDataFrames into one geometry.
+- subtract_geometries_from_extent: Builds the masked region by removing holes from a rectangular extent.
 
-Core Steps:
------------
-1. **Ocean Mask Generation**: 
-   Use the bounding box minus the landmass to create the "true ocean" geometry.
-
-2. **Boundary Sampling**:
-   Sample points along the perimeter of the ocean polygon for analysis.
-
-3. **Neighborhood Analysis**:
-   For each sampled point, evaluate its local context using:
-   - Pinch Score: Based on spatial proximity and curvature.
-   - Ray-Casting: Probe into the water to measure enclosure or openness.
-
-4. **Pinch Detection**:
-   Identify local maxima in pinch or constriction scores — these are potential feature dividers.
-
-5. **Seal Placement**:
-   Programmatically connect narrow gaps using synthetic "seal" lines that divide features.
-
-6. **Polygon Segmentation**:
-   Cut the ocean polygon using seals and relabel each resulting sub-polygon.
-
-7. **Output Classification**:
-   Return a GeoDataFrame or shapefile with each region labeled either as 'ocean' or 'connected_feature'.
-
-Future Extensions:
-------------------
-- Interactive labeling/validation in Dash.
-- Semi-supervised ML to refine classification heuristics.
-- User-placed seals with automatic refinement.
-- Spatial feature embedding for contextual classification.
+Typical Use Case:
+-----------------
+Used to define spatial extents (like oceans) before downstream analysis such as 
+ray casting, pinch detection, or region segmentation.
 
 """
 import sys
@@ -65,65 +30,70 @@ from mapcreator.map import export_geometry
 from mapcreator.visualization import viewing_util
 from mapcreator.scripts.extract_images import get_image_dimensions
 
-def union_geo_files(land_shapefile_paths):
+def union_geo_files(
+    sources: Union[Path, gpd.GeoDataFrame, list[Union[Path, gpd.GeoDataFrame]]]
+) -> gpd.GeoDataFrame:
     """
-    Reads and unions all geometries from one or more shapefiles into a single-row GeoDataFrame.
-    Returns a GeoDataFrame for consistency across the module.
+    Union all geometries from one or more shapefiles or GeoDataFrames into a single-row GeoDataFrame.
+    Args:
+        sources (Path | GeoDataFrame | list): Single or list of shapefile paths or GeoDataFrames.
+    Returns:
+        GeoDataFrame: One-row GeoDataFrame containing the unioned geometry.
     """
-    all_geoms = []
+    if not isinstance(sources, list):
+        sources = [sources]
 
-    for path in land_shapefile_paths:
-        gdf = gpd.read_file(path)
-        all_geoms.append(gdf.geometry)
+    geoms = []
+    for item in sources:
+        if isinstance(item, (str, Path)):
+            gdf = gpd.read_file(item)
+            geoms.append(gdf.geometry)
+        elif isinstance(item, gpd.GeoDataFrame):
+            geoms.append(item.geometry)
+        else:
+            raise TypeError(f"Unsupported input type: {type(item)}")
 
-    combined_series = gpd.GeoSeries(pd.concat(all_geoms, ignore_index=True))
-    unioned = combined_series.union_all()
+    all_geoms = gpd.GeoSeries(pd.concat(geoms, ignore_index=True))
+    unioned = all_geoms.union_all()
 
-    # Wrap result in a GeoDataFrame for consistency
-    return gpd.GeoDataFrame({'geometry': [unioned]}, crs=gdf.crs)
+    return gpd.GeoDataFrame({'geometry': [unioned]}, crs="EPSG:4326")
 
-def generate_voided_extent(geo_file_paths: Union[Path, list[Path]],
-                            dimensions: tuple = (1200, 1200)) -> gpd.GeoDataFrame:
+def subtract_geometries_from_extent(
+        geo_files: Union[Path, gpd.GeoDataFrame, list[Union[Path, gpd.GeoDataFrame]]],
+        dimensions: tuple = (1200, 1200)) -> gpd.GeoDataFrame:
     """
-    Generate a polygon layer representing the true ocean by subtracting land from the full image extent.
+    Subtracts input geometries from a bounding box to create a voided extent mask.
 
     Args:
-        land_shapefile_paths (Path or list[Path]): One or more shapefile paths representing landmasses.
-        default_dim (tuple): Default size (width, height) if image not provided.
+        geo_file (Path | GeoDataFrame | list): Shapefile path(s) or GeoDataFrame(s) defining the "hole" regions.
+        dimensions (tuple): (width, height) of the bounding extent.
 
     Returns:
-        GeoDataFrame: GeoDataFrame representing the ocean mask polygon(s).
+        GeoDataFrame: A single-row GeoDataFrame representing the voided geometry.
     """
-    if isinstance(geo_file_paths, Path):
-        geo_file_paths = [geo_file_paths]
-    elif not isinstance(geo_file_paths, list):
-        raise TypeError("land_shapefile_paths must be a Path or a list of Paths.")
-
-    # Get image size or use default
-    width, height = dimensions
-
+    
+    # Subtract polygons from the bounding box
+    unioned_geoms = union_geo_files(geo_files).geometry.iloc[0]
+    
     # Create outer bounding box representing the full image extent
-    world_bbox = box(0, 0, width, height)
-
-    # Subtract land polygons from the bounding box to isolate the ocean
-    land_geom  = union_geo_files(geo_file_paths).geometry.iloc[0]
-    ocean_geom = world_bbox.difference(land_geom)
+    bbox = box(0, 0, *dimensions)
+    voided = bbox.difference(unioned_geoms)
+    voided_geom = gpd.GeoDataFrame({'geometry': [voided]}, crs="EPSG:4326")
     
     #------
-    print("Ocean Geometry Type:", type(ocean_geom))
-    if isinstance(ocean_geom, Polygon):
-        print(" - Exterior length:", len(ocean_geom.exterior.coords))
-        print(" - Number of holes:", len(ocean_geom.interiors))
-    elif isinstance(ocean_geom, MultiPolygon):
-        for i, poly in enumerate(ocean_geom.geoms):
+    print("Ocean Geometry Type:", type(voided_geom))
+    if isinstance(voided_geom, Polygon):
+        print(" - Exterior length:", len(voided_geom.exterior.coords))
+        print(" - Number of holes:", len(voided_geom.interiors))
+    elif isinstance(voided_geom, MultiPolygon):
+        for i, poly in enumerate(voided_geom.geoms):
             print(f" - Polygon {i}: {len(poly.exterior.coords)} exterior coords, {len(poly.interiors)} holes")
     #------
-    ocean_gdf = gpd.GeoDataFrame({'geometry': [ocean_geom]}, crs="EPSG:4326")
-    ocean_gdf["type"] = "ocean"
-    ocean_gdf["source"] = ";".join(p.name for p in geo_file_paths)
 
-    return ocean_gdf
+    voided_gdf = gpd.GeoDataFrame({'geometry': [voided]}, crs="EPSG:4326")
 
+    return voided_gdf
+    
 if __name__ == '__main__':
     input_date = "050725"
     LAND_GEOJSON = f"land_{input_date}.geojson"
@@ -131,11 +101,14 @@ if __name__ == '__main__':
     
     geo_file_path = directories.SHAPEFILES_DIR / LAND_GEOJSON
     land_gdf = union_geo_files([geo_file_path])
-    
 
+    #get source image dimensions
     IMG_PATH = directories.IMAGES_DIR / configs.WORKING_WORLD_IMG_NAME
     image_width, image_height = get_image_dimensions(IMG_PATH)
-    ocean_gdf = generate_voided_extent(geo_file_path, dimensions=(image_width, image_height))
+
+    ocean_gdf = subtract_geometries_from_extent(geo_file_path, dimensions=(image_width, image_height))
+    ocean_gdf["type"] = "ocean"
+    ocean_gdf["source"] = ";".join(p for p in [geo_file_path.name])
 
     if DRAW_FIG:
         fig = world_viewer.plot_shapes(ocean_gdf)

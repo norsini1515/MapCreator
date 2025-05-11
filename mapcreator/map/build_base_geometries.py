@@ -270,7 +270,7 @@ if __name__ == '__main__':
     
     print('processing internal water geometry')
     lakes_meta = configs.GEOMETRY_METADATA["lakes"].copy()
-    lakes_img = directories.IMAGES_DIR / land_meta['source']
+    lakes_img = directories.IMAGES_DIR / lakes_meta['source']
     lakes_geometry_path = directories.SHAPEFILES_DIR / f"lakes_{DATE}.geojson"
     lakes_gdf = image_to_geometry_pipeline(lakes_img, visualize=VISUALIZE, metadata=lakes_meta)
     export_geometry(lakes_gdf, lakes_geometry_path)
