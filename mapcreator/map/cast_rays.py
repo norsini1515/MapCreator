@@ -174,61 +174,104 @@ def generate_rays_df_parallel(
 
     return gpd.GeoDataFrame(ray_records, crs="EPSG:4326")
 
+def generate_ray_dataset(
+    holes_path: Path,
+    extent_path: Path,
+    img_path: Path,
+    output_path = Path,
+    ray_count: int = 32,
+    spacing: int = 15,
+    max_distance: float = 2000.0,
+    proximity_thresh: int = 5,
+    max_workers: int = 8,
+    draw_fig: bool = True,
+    export: bool = True
+) -> gpd.GeoDataFrame:
+    """
+    Pipeline function to generate and optionally export a ray dataset.
+
+    Args:
+        holes_path: Path to landmass (hole) GeoJSON or Shapefile.
+        extent_path: Path to void extent (e.g., ocean mask).
+        img_path: Path to source image file (used for dimension clipping).
+        output_path: File path to save ray dataset (should end in .geojson or .shp).
+        ray_count: Number of rays to cast per sampled point.
+        spacing: Distance between sampled points on perimeter.
+        max_distance: Maximum length of a ray.
+        proximity_thresh: Distance threshold to determine valid segment.
+        max_workers: Number of processes to use.
+        draw_fig: Whether to visualize the geometries and rays.
+        export: Whether to save the ray dataset to disk.
+
+    Returns:
+        GeoDataFrame of valid rays with metadata.
+    """
+    # --- Load geometries ---
+    print("load files . . .")
+    holes_gdf = union_geo_files([holes_path])
+    extent_gdf = gpd.read_file(extent_path)
+    summarize_load(holes_gdf, "holes_gdf")
+    summarize_load(extent_gdf, "extent_gdf")
+
+    # --- Sample Points ---
+    print('sampling border')
+    sampled_points = sample_perimeter_points(extent_gdf, spacing=spacing)
+    print(f"Sampled {len(sampled_points)} perimeter points.")
+
+    # --- Dimensions ---
+    dimensions = get_image_dimensions(img_path)
+
+    # --- Visualization Prep ---
+    if draw_fig:
+        fig = world_viewer.plot_shapes(extent_gdf)
+        fig = world_viewer.plot_shapes(holes_gdf, fig)
+        fig = world_viewer.plot_overlay(fig, sampled_points, color="red", name="sample_points", size=5)
+
+    # --- Ray Casting ---
+    print("Casting rays...")
+    ray_df = generate_rays_df_parallel(
+        sampled_points=sampled_points,
+        holes_gdf=holes_gdf,
+        ray_count=ray_count,
+        max_distance=max_distance,
+        proximity_thresh=proximity_thresh,
+        dimensions=dimensions,
+        max_workers=max_workers
+    )
+    print(f"Generated {len(ray_df)} rays.")
+
+    # --- Export ---
+    if export:
+        export_geometry(ray_df, output_path)
+        print(f"Exported rays to {output_path}")
+
+    if draw_fig:
+        fig = world_viewer.plot_overlay(fig, ray_df, color="orange", name="rays", width=1)
+        viewing_util.save_figure_to_html(fig, output_path.with_suffix('.html'), open_on_export=True)
+
+    return ray_df
+
 #---------------------------------
 
-DRAW_FIG = True
 if __name__ == '__main__':
-    #setting variables
-    input_date = "050725"
-    output_name = 'rays_cast'
-    output_date = '051025'
-    #---------
-    #define land (holes)
-    LAND_GEOJSON = f"land_{input_date}.geojson"
-    land_path = directories.SHAPEFILES_DIR / LAND_GEOJSON
-    #---------
-    #define ocean (extent)
-    OCEAN_GEOJSON = f"ocean_{input_date}.geojson"
-    ocean_path = directories.SHAPEFILES_DIR / OCEAN_GEOJSON
-    #---------
-    #load holes and extent 
-    land_gdf = union_geo_files([land_path])
-    ocean_gdf = gpd.read_file(ocean_path)
-    #sumarize loads of holes and extent
-    summarize_load(land_gdf, 'land_gdf')
-    summarize_load(ocean_gdf, 'ocean_gdf')
-    #---------
-    print("sample outlines of the holes (the edges of the extent file)")
-    sampled_coastline_points = sample_perimeter_points(ocean_gdf)
-    print('sampled coastline points:', len(sampled_coastline_points))
-    #---------
-    print("visually sumarize preprocessing for ray casting")
-    if DRAW_FIG:
-        fig = world_viewer.plot_shapes(ocean_gdf)
-        fig = world_viewer.plot_shapes(land_gdf, fig)
-        fig = world_viewer.plot_overlay(fig, sampled_coastline_points, color="red", name="sample_points", size=5)
-    #---------
-    print('getting source image dimensions')
-    IMG_PATH = directories.IMAGES_DIR / configs.WORKING_WORLD_IMG_NAME
-    image_width, image_height = get_image_dimensions(IMG_PATH)
-    
-    print('generating rays . . .')
-    ray_df = generate_rays_df_parallel(sampled_points=sampled_coastline_points, 
-                                       holes_gdf=land_gdf, ray_count=32, 
-                                       max_distance=2000, proximity_thresh=5, 
-                                       dimensions=(image_width, image_height),
-                                       max_workers=8)
-    print('ray_df:', ray_df.shape)
+    DRAW_FIG = True
+    EXPORT = True
 
-    print('outputing ray data set')
-    rays_filename = f"ocean_ray_dataset_{output_date}.geojson"
-    rays_filepath = directories.DATA_DIR / rays_filename
-    export_geometry(ray_df, rays_filepath)
-    
-    print(ray_df[['angle', 'distance', 'hit_type', 'geometry']].head())
-    
-    print('display results')
-    if DRAW_FIG:
-        fig = world_viewer.plot_overlay(fig, ray_df, color="orange", name="rays", width=1)
-        html_path = directories.DATA_DIR / f"{configs.WORLD_NAME}_rays_cast.html"
-        viewing_util.save_figure_to_html(fig, html_path, open_on_export=True)
+    land_path = directories.SHAPEFILES_DIR / "land_050725.geojson"
+    ocean_path = directories.SHAPEFILES_DIR / "ocean_050725.geojson"
+    img_path = directories.IMAGES_DIR / configs.WORKING_WORLD_IMG_NAME
+    output_path = directories.DATA_DIR / "ocean_ray_dataset_051025.geojson"
+
+    generate_ray_dataset(
+        holes_path=land_path,
+        extent_path=ocean_path,
+        img_path=img_path,
+        output_path=output_path,
+        ray_count=32,
+        spacing=15,
+        max_distance=2000,
+        proximity_thresh=5,
+        max_workers=8,
+        draw_fig=DRAW_FIG,
+        export=EXPORT
+    )
