@@ -221,7 +221,7 @@ if __name__ == '__main__':
     print('ray_df:', ray_df.shape)
 
     print('outputing ray data set')
-    rays_filename = f"ocean_ray_dataset_{output_date}_2.geojson"
+    rays_filename = f"ocean_ray_dataset_{output_date}.geojson"
     rays_filepath = directories.DATA_DIR / rays_filename
     export_geometry(ray_df, rays_filepath)
     
