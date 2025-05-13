@@ -31,6 +31,7 @@ from mapcreator.map import export_geometry, union_geo_files
 from mapcreator.visualization import viewing_util
 from mapcreator.scripts.extract_images import get_image_dimensions
 from pathlib import Path
+from typing import Union, List
 import sys
 
 from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -175,8 +176,8 @@ def generate_rays_df_parallel(
     return gpd.GeoDataFrame(ray_records, crs="EPSG:4326")
 
 def generate_ray_dataset(
-    holes_path: Path,
-    extent_path: Path,
+    holes_path: Union[Path, List[Path]],
+    extent_path: Union[Path, List[Path]],
     img_path: Path,
     output_path = Path,
     ray_count: int = 32,
@@ -191,8 +192,8 @@ def generate_ray_dataset(
     Pipeline function to generate and optionally export a ray dataset.
 
     Args:
-        holes_path: Path to landmass (hole) GeoJSON or Shapefile.
-        extent_path: Path to void extent (e.g., ocean mask).
+        holes_path: One or more paths to hole GeoJSON/Shapefiles (e.g., land, elevation barriers).
+        extent_path: One or more paths to extent polygons (e.g., ocean, elevation basin).
         img_path: Path to source image file (used for dimension clipping).
         output_path: File path to save ray dataset (should end in .geojson or .shp).
         ray_count: Number of rays to cast per sampled point.
@@ -208,8 +209,8 @@ def generate_ray_dataset(
     """
     # --- Load geometries ---
     print("load files . . .")
-    holes_gdf = union_geo_files([holes_path])
-    extent_gdf = gpd.read_file(extent_path)
+    holes_gdf = union_geo_files([holes_path] if isinstance(holes_path, Path) else holes_path)
+    extent_gdf = union_geo_files([extent_path] if isinstance(extent_path, Path) else extent_path)
     summarize_load(holes_gdf, "holes_gdf")
     summarize_load(extent_gdf, "extent_gdf")
 
