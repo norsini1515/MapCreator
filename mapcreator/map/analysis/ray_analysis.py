@@ -137,6 +137,25 @@ def find_ray_clusters(ray_df: gpd.GeoDataFrame, eps: float = 40, min_samples: in
     
     return end_gdf
 
+def summarize_clusters(ray_df: gpd.GeoDataFrame):
+    summary = (
+        ray_df[ray_df['cluster'] != -1]
+        .groupby('cluster')
+        .agg(
+            point_count=('cluster', 'size'),
+            mean_distance=('distance', 'mean'),
+            std_distance=('distance', 'std'),
+            min_x=('geometry', lambda g: g.bounds.minx.min()),
+            max_x=('geometry', lambda g: g.bounds.maxx.max()),
+            min_y=('geometry', lambda g: g.bounds.miny.min()),
+            max_y=('geometry', lambda g: g.bounds.maxy.max()),
+        )
+        .reset_index()
+    )
+    summary['bbox_area'] = (summary['max_x'] - summary['min_x']) * (summary['max_y'] - summary['min_y'])
+    summary['density'] = summary['point_count'] / summary['bbox_area']
+    return summary.sort_values('point_count', ascending=False)
+
 if __name__ == '__main__':
     input_date = "051025"
     file_path = directories.DATA_DIR / f"ocean_ray_dataset_{input_date}.geojson"
@@ -163,20 +182,13 @@ if __name__ == '__main__':
     
     
     
-    if False:
-        # Step 1: Focus only on 'coastline' hits (skip boundary rays)
-        filtered = rays_gdf[rays_gdf['hit_type'] == 'coastline']
-        
-        # Step 2: Optional: only short-distance rays (likely inside features)
-        filtered = filtered[filtered['distance'] < filtered['distance'].quantile(0.5)]
-        
-        # Step 3: Then apply clustering on filtered['end_point']
-        clustered_endpoints = find_ray_clusters(filtered, eps=15, min_samples=5).set_crs(None, allow_override=True)
-        
-        print(len(clustered_endpoints['cluster'].unique()))
+    filtered = rays_gdf[rays_gdf['hit_type'] == 'coastline']
+    filtered = filtered[filtered['distance'] < filtered['distance'].quantile(0.5)]
+    clustered_endpoints = find_ray_clusters(filtered, eps=15, min_samples=5).set_crs(None, allow_override=True)
+    print(len(clustered_endpoints['cluster'].unique()))
     
+    if False:
         print(clustered_endpoints['cluster'].value_counts())
-        
         fig, ax = plt.subplots(figsize=(10, 8))
         clustered_endpoints.plot(ax=ax, column='cluster', categorical=True, legend=True, markersize=4, cmap='tab20')
         ax.invert_yaxis()
@@ -186,15 +198,18 @@ if __name__ == '__main__':
         plt.show()
     
     
-    filtered_rays_with_clusters = filtered.copy()
-    filtered_rays_with_clusters['cluster'] = clustered_endpoints['cluster'].values
-    for cid in clustered_endpoints['cluster'].unique():
-        if cid == -1:
-            continue
-        sub = filtered_rays_with_clusters[filtered_rays_with_clusters['cluster'] == cid]
+    summary = summarize_clusters(clustered_endpoints)
+    top_clusters = summary.query("point_count > 30 and density > 0.01")  # Tune as needed
+    print(top_clusters[['cluster', 'point_count', 'density']])
+    
+
+    for cid in top_clusters['cluster']:
+        sub = clustered_endpoints[clustered_endpoints['cluster'] == cid]
         fig, ax = plt.subplots()
-        sub.plot(ax=ax, color='orange', linewidth=0.5)
+        sub.plot(ax=ax, linewidth=0.4, color='orange')
         ax.set_aspect("equal")
         ax.invert_yaxis()
-        plt.title(f"Rays Terminating in Cluster {cid}")
+        plt.title(f"Cluster {cid} Ray Paths")
+        plt.tight_layout()
+        
         plt.show()
