@@ -1,0 +1,73 @@
+🌐 Phase 1: Ray-Focused Analysis Plan
+✅ Data Recap
+Total Rays: 9,315
+
+Hit Types:
+
+coastline: 7,241 rays
+
+boundary: 2,074 rays
+
+Columns:
+
+angle: direction ray was cast (radians or degrees)
+
+distance: from start_point to end_point
+
+hit_type: classification of what was hit
+
+geometry: ray LineString
+
+start_point, end_point: Points for origin and termination
+
+🔍 A. Exploratory Ray Analysis
+1. Ray Length Distributions
+Separate histograms by hit_type (coastline vs boundary)
+
+Check for multimodal distributions → may indicate regions of differing enclosure
+
+2. Angular Density Analysis
+Plot polar histograms (rose plots) of angle
+
+Highlight directional biases (e.g., heavy clustering of northward rays might imply barrier to the south)
+
+3. Distance vs. Angle Scatter
+Identify rays that:
+
+Go far in very specific directions
+
+Are short regardless of angle → could signal enclosed inlets
+
+4. Ray Endpoint Clustering
+Apply DBSCAN or HDBSCAN to end_point coordinates
+
+Clusters = potential inner voids / subregions
+
+Evaluate cluster tightness & location
+
+🧭 B. Spatial Aggregation by Origin
+Group rays by start_point neighborhood (e.g., within 10–25 px or meters) and calculate:
+
+mean_distance, std_distance
+
+mean_angle, angle_variance
+
+coastline_hit_ratio: proportion hitting the coast vs boundary
+
+Optional: construct a spatial dataframe of origin zones (e.g., circular buffer or small coastline segments).
+
+📈 C. Derived Metrics per Ray or Segment
+Metric	Description
+enclosure_score	Inverse of average distance in a local segment
+openness_vector	Mean vector of ray directions
+directional_entropy	Measure of angular spread from a segment
+bottleneck_indicator	Short rays in multiple opposing directions
+
+Use these to score candidate "bays", "inlets", or "funnels" along the coastline.
+
+🧩 D. Candidate Region Identification (Ray-only)
+Build an interpolated openness heatmap along perimeter
+
+Find local minima in openness → potential subdivisions
+
+Flag adjacent regions with high directional entropy but low average length
