@@ -22,7 +22,7 @@ TYPE_OUTLINE_COLOR_MAP = {
 }
 
 
-def plot_shapes(data, fig=None):
+def plot_shapes(data, fig=None, showlegend=False):
     """
     Plots raw 2D polygon shapes (including holes) using Plotly.
 
@@ -65,7 +65,8 @@ def plot_shapes(data, fig=None):
                 hoverlabel=dict(namelength=0, bgcolor="white", font_size=12),
                 hoverinfo="text",
                 line=dict(color=outline_color, width=1),
-                fillcolor=fill_color if filled else None
+                fillcolor=fill_color if filled else None,
+                showlegend=showlegend
             ))
 
         if poly.geom_type == "Polygon":
@@ -94,7 +95,7 @@ def plot_shapes(data, fig=None):
         plot_bgcolor="#f4f1e1",
         paper_bgcolor="#f4f1e1",
         margin=dict(l=0, r=0, t=40, b=0),
-        showlegend=False
+        # showlegend=False
     )
 
     fig.update_yaxes(autorange='reversed')  # Reinforce reversal in case layout doesn’t apply it

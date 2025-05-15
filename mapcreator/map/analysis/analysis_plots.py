@@ -4,6 +4,15 @@ import geopandas as gpd
 import pandas as pd
 import numpy as np
 
+def plot_rays(rays_gdf):
+    fig, ax = plt.subplots(figsize=(10, 8))
+    rays_gdf.plot(ax=ax, linewidth=0.3, color='orange', alpha=0.5)
+    ax.set_aspect("equal")
+    ax.invert_yaxis()  # Flip it upright for image-style view
+    plt.title("Ray Paths")
+    plt.tight_layout()
+    plt.show()
+    
 def plot_histogram_by_group(
     df: pd.DataFrame,
     column: str,

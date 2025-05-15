@@ -20,19 +20,29 @@ Core Functions:
 """
 
 import geopandas as gpd
+import pandas as pd
 import numpy as np
+
 from sklearn.cluster import DBSCAN
+from sklearn.preprocessing import StandardScaler
+
 from shapely.geometry import Point, LineString, Polygon
+
 from typing import Optional
 from pathlib import Path
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-from mapcreator import directories, summarize_load
+import plotly.express as px
+import plotly.graph_objects as go
+
+from mapcreator import directories, summarize_load, world_viewer
+from mapcreator.visualization import viewing_util
 from mapcreator.map.analysis  import (
     plot_histogram_by_group,
     plot_polar_histogram_by_group,
-    plot_scatter_by_group
+    plot_scatter_by_group,
+    plot_rays
 )
 
 def analyze_ray_density(
@@ -137,6 +147,20 @@ def find_ray_clusters(ray_df: gpd.GeoDataFrame, eps: float = 40, min_samples: in
     
     return end_gdf
 
+def build_ray_feature_matrix(ray_df: gpd.GeoDataFrame) -> pd.DataFrame:
+    df = pd.DataFrame({
+        "end_x": ray_df["end_point"].x,
+        "end_y": ray_df["end_point"].y,
+        # "start_x": ray_df["start_point"].x,
+        # "start_y": ray_df["start_point"].y,
+        "distance": ray_df["distance"],
+        # "angle": ray_df["angle"],
+        # "angle_x": np.cos(ray_df["angle"]),
+        # "angle_y": np.sin(ray_df["angle"]),
+    })
+    return df
+
+
 def summarize_clusters(ray_df: gpd.GeoDataFrame):
     summary = (
         ray_df[ray_df['cluster'] != -1]
@@ -156,60 +180,118 @@ def summarize_clusters(ray_df: gpd.GeoDataFrame):
     summary['density'] = summary['point_count'] / summary['bbox_area']
     return summary.sort_values('point_count', ascending=False)
 
+def plot_clusters(clustered_endpoints, fig=None):
+    
+    # Ensure cluster is treated as a string (so Plotly uses categorical color)
+    clustered_endpoints["cluster_str"] = clustered_endpoints["cluster"].astype(str)
+    
+    if not fig:
+        fig = go.Figure()
+
+    # Loop by cluster to manually assign color and legend entries
+    colors = px.colors.qualitative.Dark24
+    cluster_ids = clustered_endpoints["cluster_str"].unique()
+    color_map = {cid: colors[i % len(colors)] for i, cid in enumerate(cluster_ids)}
+    
+    for cid in cluster_ids:
+        if cid == -1:
+            continue
+        sub = clustered_endpoints[clustered_endpoints["cluster_str"] == cid]
+        fig.add_trace(go.Scattergl(
+            x=sub["x"],
+            y=sub["y"],
+            mode='markers',
+            name=f"Cluster {cid}",
+            marker=dict(
+                size=6,
+                color=color_map[cid],
+                opacity=0.7,
+                line=dict(width=0)
+            ),
+            hovertext=[f"Cluster: {row.cluster}, Dist: {row.distance:.1f}, Angle: {row.angle:.2f}" for row in sub.itertuples()],
+            hoverinfo="text"
+        ))
+
+    fig.update_yaxes(autorange="reversed")
+    fig.update_layout(
+        title="Ray Endpoint Clusters",
+        height=1000,
+        width=1000,
+        legend_title="Cluster ID",
+        margin=dict(l=20, r=20, t=40, b=20),
+        legend=dict(
+        title="Cluster ID",
+        x=1.02,  # Shift right of plot
+        y=1,
+        borderwidth=1,
+        bgcolor="white"
+        ),
+    )
+
+    return fig
+
 if __name__ == '__main__':
     input_date = "051025"
     file_path = directories.DATA_DIR / f"ocean_ray_dataset_{input_date}.geojson"
     rays_gdf = load_ray_dataset(file_path).set_crs(None, allow_override=True)
+    land_path = directories.SHAPEFILES_DIR / "land_050725.geojson"
+    land_gdf = gpd.read_file(land_path)
+
+    ocean_path = directories.SHAPEFILES_DIR / "ocean_050725.geojson"
+    ocean_gdf = gpd.read_file(ocean_path)
+    #plotting functionality
+    if False:
+        plot_rays(rays_gdf)
+
+        plot_histogram_by_group(rays_gdf, column='distance', group='hit_type',
+                                title="Ray Distance Distribution by Hit Type")
+        
+        plot_polar_histogram_by_group(rays_gdf, angle_col='angle', group_col='hit_type',
+                                    title="Polar Histogram of Ray Angles")
+
+        plot_scatter_by_group(rays_gdf, x='angle', y='distance', group='hit_type',
+                            title="Ray Distance vs Angle")
     
-    fig, ax = plt.subplots(figsize=(10, 8))
-    rays_gdf.plot(ax=ax, linewidth=0.3, color='orange', alpha=0.5)
-    ax.set_aspect("equal")
-    ax.invert_yaxis()  # Flip it upright for image-style view
-    plt.title("Ray Paths")
-    plt.tight_layout()
-    plt.show()
+    
     #🎯 Step 1: Ray Endpoint Clustering
     #🎯 Step 2: Neighborhood Entropy + Mean Distance
-    
-    # plot_histogram_by_group(rays_gdf, column='distance', group='hit_type',
-    #                         title="Ray Distance Distribution by Hit Type")
-    
-    # plot_polar_histogram_by_group(rays_gdf, angle_col='angle', group_col='hit_type',
-    #                               title="Polar Histogram of Ray Angles")
+    filtered_rays = rays_gdf[rays_gdf['hit_type'] == 'coastline']
+    filtered_rays = filtered_rays[filtered_rays['distance'] < filtered_rays['distance'].quantile(.75)]
 
-    # plot_scatter_by_group(rays_gdf, x='angle', y='distance', group='hit_type',
-    #                       title="Ray Distance vs Angle")
+    features = build_ray_feature_matrix(filtered_rays)
+    # X = StandardScaler().fit_transform(features)
+    
+    db = DBSCAN(eps=20, min_samples=10).fit(features)
+    filtered_rays["cluster"] = db.labels_
+    filtered_rays["x"] = filtered_rays.end_point.x
+    filtered_rays["y"] = filtered_rays.end_point.y
+
+    # clustered_endpoints = find_ray_clusters(filtered_rays, eps=10, min_samples=10).set_crs(None, allow_override=True)
+    # print(f"Detected {len(clustered_endpoints['cluster'].unique())} clusters.")
+    # print(f"Noise count: {(clustered_endpoints['cluster']==-1).sum()}")
+    
+    # clustered_endpoints["x"] = clustered_endpoints.geometry.x
+    # clustered_endpoints["y"] = clustered_endpoints.geometry.y
+
+    cluster_fig = world_viewer.plot_shapes(ocean_gdf)
+    cluster_fig = world_viewer.plot_shapes(land_gdf, cluster_fig)
+    # cluster_fig = plot_clusters(clustered_endpoints, cluster_fig)
+    cluster_fig = plot_clusters(filtered_rays, cluster_fig)
+    viewing_util.save_figure_to_html(cluster_fig, directories.DATA_DIR/'ray_endpoint_cluster3.html', open_on_export=True)
     
     
-    
-    filtered = rays_gdf[rays_gdf['hit_type'] == 'coastline']
-    filtered = filtered[filtered['distance'] < filtered['distance'].quantile(0.5)]
-    clustered_endpoints = find_ray_clusters(filtered, eps=15, min_samples=5).set_crs(None, allow_override=True)
-    print(len(clustered_endpoints['cluster'].unique()))
-    
-    if False:
-        print(clustered_endpoints['cluster'].value_counts())
-        fig, ax = plt.subplots(figsize=(10, 8))
-        clustered_endpoints.plot(ax=ax, column='cluster', categorical=True, legend=True, markersize=4, cmap='tab20')
-        ax.invert_yaxis()
-        plt.title("Ray Endpoint Clusters")
-        plt.axis('off')
-        plt.tight_layout()
-        plt.show()
-    
-    
-    summary = summarize_clusters(clustered_endpoints)
-    top_clusters = summary.query("point_count > 30 and density > 0.01")  # Tune as needed
-    print(top_clusters[['cluster', 'point_count', 'density']])
+    # summary = summarize_clusters(clustered_endpoints)
+    # top_clusters = summary.query("point_count > 30 and density > 0.01")  # Tune as needed
+    # print(top_clusters[['cluster', 'point_count', 'density']])
     
 
-    for cid in top_clusters['cluster']:
-        sub = clustered_endpoints[clustered_endpoints['cluster'] == cid]
-        fig, ax = plt.subplots()
-        sub.plot(ax=ax, linewidth=0.4, color='orange')
-        ax.set_aspect("equal")
-        ax.invert_yaxis()
-        plt.title(f"Cluster {cid} Ray Paths")
-        plt.tight_layout()
+    # for cid in top_clusters['cluster']:
+    #     sub = clustered_endpoints[clustered_endpoints['cluster'] == cid]
+    #     fig, ax = plt.subplots()
+    #     sub.plot(ax=ax, linewidth=0.4, color='orange')
+    #     ax.set_aspect("equal")
+    #     ax.invert_yaxis()
+    #     plt.title(f"Cluster {cid} Ray Paths")
+    #     plt.tight_layout()
         
-        plt.show()
+    #     plt.show()
