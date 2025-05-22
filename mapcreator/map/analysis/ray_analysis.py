@@ -17,14 +17,18 @@ Core Functions:
 - analyze_ray_density()
 - find_ray_clusters()
 - detect_pinches()
+
+#🎯 Step 1: Ray Endpoint Clustering
+#🎯 Step 2: Neighborhood Entropy + Mean Distance
 """
 
 import geopandas as gpd
 import pandas as pd
 import numpy as np
+from itertools import product
 
 from sklearn.cluster import DBSCAN
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import StandardScaler, MinMaxScaler
 
 from shapely.geometry import Point, LineString, Polygon
 
@@ -135,30 +139,60 @@ def find_ray_clusters(ray_df: gpd.GeoDataFrame, eps: float = 40, min_samples: in
     coords = np.array([[pt.x, pt.y] for pt in ray_df['end_point']])
     
     db = DBSCAN(eps=eps, min_samples=min_samples).fit(coords)
-    labels = db.labels_
+    # labels = db.labels_
     
-    end_gdf = gpd.GeoDataFrame({
-        'geometry': ray_df['end_point'],
-        'cluster': labels,
-        'hit_type': ray_df['hit_type'],
-        'distance': ray_df['distance'],
-        'angle': ray_df['angle']
-    }, geometry='geometry', crs=ray_df.crs)
+    # end_gdf = gpd.GeoDataFrame({
+    #     'geometry': ray_df['end_point'],
+    #     'cluster': labels,
+    #     'hit_type': ray_df['hit_type'],
+    #     'distance': ray_df['distance'],
+    #     'angle': ray_df['angle']
+    # }, geometry='geometry', crs=None)
     
-    return end_gdf
+    return db
 
-def build_ray_feature_matrix(ray_df: gpd.GeoDataFrame) -> pd.DataFrame:
-    df = pd.DataFrame({
-        "end_x": ray_df["end_point"].x,
-        "end_y": ray_df["end_point"].y,
-        # "start_x": ray_df["start_point"].x,
-        # "start_y": ray_df["start_point"].y,
-        "distance": ray_df["distance"],
-        # "angle": ray_df["angle"],
-        # "angle_x": np.cos(ray_df["angle"]),
-        # "angle_y": np.sin(ray_df["angle"]),
-    })
-    return df
+def build_feature_matrix(ray_df, use_start=True, use_end=True, use_distance=True, scale=None):
+    features = {}
+    feature_identifier_str = ""
+    if use_end:
+        feature_identifier_str += 'endxy'
+    
+        features["end_x"] = ray_df["end_point"].x
+        features["end_y"] = ray_df["end_point"].y
+    
+    if use_start:
+        if(feature_identifier_str != ""):
+            feature_identifier_str += "_"
+        feature_identifier_str += 'startxy'
+        
+        features["start_x"] = ray_df["start_point"].x
+        features["start_y"] = ray_df["start_point"].y
+    
+    if use_distance:
+        if(feature_identifier_str != ""):
+            feature_identifier_str += "_"
+        feature_identifier_str += 'dist'
+            
+        features["distance"] = ray_df["distance"]
+
+    df = pd.DataFrame(features)
+
+    if scale == "minmax":
+        scaler = MinMaxScaler()
+    elif scale == "standard":
+        scaler = StandardScaler()
+    else:
+        scaler = None
+
+    if scaler:
+        if(feature_identifier_str != ""):
+            feature_identifier_str += "_"
+        feature_identifier_str += scale
+        
+        df = pd.DataFrame(scaler.fit_transform(df), columns=df.columns)
+
+    return df, feature_identifier_str
+
 
 
 def summarize_clusters(ray_df: gpd.GeoDataFrame):
@@ -230,6 +264,13 @@ def plot_clusters(clustered_endpoints, fig=None):
 
     return fig
 
+def view_cluster_in_world(ocean_gdf, land_gdf, cluster_df):
+    cluster_fig = world_viewer.plot_shapes(ocean_gdf)
+    cluster_fig = world_viewer.plot_shapes(land_gdf, cluster_fig)
+    cluster_fig = plot_clusters(cluster_df, cluster_fig)
+    
+    return cluster_fig
+
 if __name__ == '__main__':
     input_date = "051025"
     file_path = directories.DATA_DIR / f"ocean_ray_dataset_{input_date}.geojson"
@@ -252,32 +293,70 @@ if __name__ == '__main__':
         plot_scatter_by_group(rays_gdf, x='angle', y='distance', group='hit_type',
                             title="Ray Distance vs Angle")
     
-    
-    #🎯 Step 1: Ray Endpoint Clustering
-    #🎯 Step 2: Neighborhood Entropy + Mean Distance
     filtered_rays = rays_gdf[rays_gdf['hit_type'] == 'coastline']
     filtered_rays = filtered_rays[filtered_rays['distance'] < filtered_rays['distance'].quantile(.75)]
-
-    features = build_ray_feature_matrix(filtered_rays)
-    # X = StandardScaler().fit_transform(features)
     
-    db = DBSCAN(eps=20, min_samples=10).fit(features)
-    filtered_rays["cluster"] = db.labels_
-    filtered_rays["x"] = filtered_rays.end_point.x
-    filtered_rays["y"] = filtered_rays.end_point.y
-
-    # clustered_endpoints = find_ray_clusters(filtered_rays, eps=10, min_samples=10).set_crs(None, allow_override=True)
-    # print(f"Detected {len(clustered_endpoints['cluster'].unique())} clusters.")
-    # print(f"Noise count: {(clustered_endpoints['cluster']==-1).sum()}")
+    eps_values = [5, 10, 15, 20]
+    min_samples_values = [5, 10, 15]
+    use_end_options = [True, False]
+    use_start_options = [True, False]
+    use_distance_options = [True, False]
+    param_grid = [
+        combo for combo in product(eps_values, min_samples_values, use_end_options, use_start_options, use_distance_options)
+        if any(combo[2:])  # at least one of use_end, use_start, use_distance is True
+    ]
     
-    # clustered_endpoints["x"] = clustered_endpoints.geometry.x
-    # clustered_endpoints["y"] = clustered_endpoints.geometry.y
+    rejected_configs = []
+    
+    for eps, min_samples, use_end, use_start, use_distance in param_grid:
+        # Skip degenerate configs
+        if not (use_end or use_start or use_distance):
+            continue
+    
+        features, feature_str = build_feature_matrix(
+            filtered_rays,
+            use_end=use_end,
+            use_start=use_start,
+            use_distance=use_distance,
+            scale=None  # or "minmax"/"standard" if desired later
+        )
+        
+        db = DBSCAN(eps=eps, min_samples=min_samples).fit(features)
+        filtered_rays["cluster"] = db.labels_
+        filtered_rays["x"] = filtered_rays.end_point.x
+        filtered_rays["y"] = filtered_rays.end_point.y
+    
+        label_count = filtered_rays["cluster"].nunique()
+        noise_count = (filtered_rays["cluster"] == -1).sum()
+        if noise_count > 650 or label_count < 25:
+            print(f"⏭️ Skipping: {feature_str} | eps={eps}, min={min_samples} — Too noisy or too few clusters")
+            
+            rejected_configs.append({
+                "features": feature_str,
+                "eps": eps,
+                "min_samples": min_samples,
+                "clusters": label_count,
+                "noise_count": noise_count
+            })
+            
+            continue
+        
+        print(f"--- {feature_str} | eps={eps}, min={min_samples} ---")
+        print(f"Clusters: {label_count - 1}, Noise: {noise_count}")
+        
+        fig = view_cluster_in_world(ocean_gdf, land_gdf, filtered_rays.copy())
+        filename = f"{feature_str}__eps{eps}_min{min_samples}.html"
+        viewing_util.save_figure_to_html(fig, directories.DATA_DIR / f"cluster_searchng/{filename}", open_on_export=False)
 
-    cluster_fig = world_viewer.plot_shapes(ocean_gdf)
-    cluster_fig = world_viewer.plot_shapes(land_gdf, cluster_fig)
-    # cluster_fig = plot_clusters(clustered_endpoints, cluster_fig)
-    cluster_fig = plot_clusters(filtered_rays, cluster_fig)
-    viewing_util.save_figure_to_html(cluster_fig, directories.DATA_DIR/'ray_endpoint_cluster3.html', open_on_export=True)
+    
+    
+    
+    
+    
+    
+    
+    
+    
     
     
     # summary = summarize_clusters(clustered_endpoints)
