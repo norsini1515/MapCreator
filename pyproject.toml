@@ -24,3 +24,6 @@ dependencies = [
     "opencv-python",
     "fiona"
 ]
+
+[project.scripts]
+mapc = "mapcreator.cli.__main__:app"

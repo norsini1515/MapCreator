@@ -11,4 +11,5 @@ SHAPEFILES_DIR = DATA_DIR / "shapefiles"
 TEMP_FILES_DIR = DATA_DIR / "temp_files"
 
 if __name__ == '__main__':
+    print(f"{BASE_DIR=}")
     print(DATA_DIR)
