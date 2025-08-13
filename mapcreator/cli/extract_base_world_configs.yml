@@ -1,0 +1,15 @@
+# configs/world1.yml
+image: data/raw/baseland_04232025_1.jpg
+out_dir: data/processed
+width: 1000
+height: 1000
+xmin: 0
+ymin: 0
+xmax: 3500
+ymax: 3500
+crs: EPSG:3857
+invert: false
+flood_fill: false
+contrast: 2.0
+min_area: 5.0
+min_points: 3

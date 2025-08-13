@@ -1,6 +1,6 @@
 from . import globals
 from .globals import configs, directories
-from .globals import flood_fill_img, invert_image, preprocess_image
+#from .globals import flood_fill_img, invert_image, preprocess_image
 
 from .scripts import extract_images
 
