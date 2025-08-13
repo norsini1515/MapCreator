@@ -1,0 +1,48 @@
+1st letter
+A (tropical humid, low lattitude, warm + wet)
+B (warm+dry climates, high pressures, 
+C (mild mid-latitude climates, mild winter, warm/hot summers)
+D (server mid-latitudes, severe/cold winters)
+E (polar, very high latitude, cold climates)
+H (high land, really tall, climate controlled by elevation)
+X (fantasy, arcane, mana, magic, etc.)
+
+2nd letter
+f wet all year
+m monsoonal summers (very wet summer season)
+w winter dry (dry winter season)
+s summer is dry season
+W deserts, extremely dry climates
+S steppes, semi arid climates
+T tundra (>=1 month above freezing)
+F ice caps (all months has averages below freezing)
+
+3rd letter
+a hot summers
+b warm summers
+c cool summers
+d very cold winters
+h hot desert or steppe
+k cold desert or steppe
+
+| ID | Code  | Description                             | Hex       |
+| -: | :---- | :-------------------------------------- | :-------- |
+|  0 | WTR   | Water                                   | #003CAA |
+| 11 | Af    | Tropical rainforest                     | #008C46 |
+| 12 | Am    | Tropical monsoon                        | #14A05A |
+| 13 | Aw    | Tropical savanna (winter dry)           | #6EB43C |
+| 21 | BWh   | Hot desert                              | #E6C878 |
+| 22 | BWk   | Cold desert                             | #D2BE96 |
+| 23 | BSh   | Hot steppe                              | #F0D296 |
+| 24 | BSk   | Cold steppe                             | #C8B48C |
+| 31 | Csa   | Mediterranean (summer dry, hot)         | #FFAA50 |
+| 32 | Cfa   | Humid subtropical                       | #78BE78 |
+| 33 | Cfb   | Marine west coast                       | #50AA8C |
+| 41 | Dfa   | Humid continental (hot summer)          | #8CC8F0 |
+| 42 | Dfb   | Humid continental (warm summer)         | #64AAE0 |
+| 51 | ET    | Tundra                                  | #B4DCFF |
+| 52 | EF    | Ice cap                                 | #EBF5FF |
+| 81 | Esa   | Polar, summer-dry, hot-summer (fantasy) | #FF7878 |
+| 82 | Xfq   | Arcane-humid, mana monsoon              | #A05ADC |
+| 83 | Bwk\* | Cold steppe with arcane frost           | #AA96C8 |
+| 84 | BSh\* | Hot steppe with arcane heat             | #D2B48C |
