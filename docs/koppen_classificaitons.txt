@@ -1,6 +1,6 @@
 1st letter
 A (tropical humid, low lattitude, warm + wet)
-B (warm+dry climates, high pressures, 
+B (warm+dry climates, high pressures) 
 C (mild mid-latitude climates, mild winter, warm/hot summers)
 D (server mid-latitudes, severe/cold winters)
 E (polar, very high latitude, cold climates)
@@ -15,7 +15,7 @@ s summer is dry season
 W deserts, extremely dry climates
 S steppes, semi arid climates
 T tundra (>=1 month above freezing)
-F ice caps (all months has averages below freezing)
+F ice caps (all months have averages below freezing)
 
 3rd letter
 a hot summers
