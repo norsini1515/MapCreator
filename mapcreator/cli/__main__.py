@@ -6,7 +6,7 @@ import typer, yaml
 # --- Typer app (root has no options) ---
 app = typer.Typer(no_args_is_help=True)
 
-DEFAULT_CONFIG_PATH = Path(__file__).parent / "extract_world_base_config.yml"
+DEFAULT_CONFIG_PATH = Path(__file__).parent / "extract_base_world_configs.yml"
 
 def _load_yaml(path: Optional[Path]) -> Dict[str, Any]:
     if not path:
@@ -25,6 +25,7 @@ def _pick(cfg: Dict[str, Any], key: str, cli_val):
 
 # import AFTER helpers so the module loads cleanly
 from mapcreator.features.tracing.pipeline import extract_all as _extract_all
+from mapcreator.features.tracing.pipeline import write_all as _write_all
 
 # --- SUBCOMMAND ---
 @app.command("extract-all")
@@ -53,10 +54,10 @@ def extract_all(
     xmax: Optional[float] = typer.Option(None, "--xmax", help="Extent max X", rich_help_panel="World grid"),
     ymax: Optional[float] = typer.Option(None, "--ymax", help="Extent max Y", rich_help_panel="World grid"),
     crs:  Optional[str]  = typer.Option(None, "--crs",  help="Output CRS (e.g., 'EPSG:3857')", rich_help_panel="World grid"),
-    # Preprocessing
-    invert:     Optional[bool]  = typer.Option(None, "--invert",     help="Invert after binarize", rich_help_panel="Preprocessing"),
-    flood_fill: Optional[bool]  = typer.Option(None, "--flood-fill", help="Flood-fill open regions", rich_help_panel="Preprocessing"),
-    contrast:   Optional[float] = typer.Option(None, "--contrast",   help="Contrast factor", rich_help_panel="Preprocessing"),
+    # Image Preprocessing
+    invert:     Optional[bool]  = typer.Option(None, "--invert",     help="Invert after binarize", rich_help_panel="Image Preprocessing"),
+    flood_fill: Optional[bool]  = typer.Option(None, "--flood-fill", help="Flood-fill open regions", rich_help_panel="Image Preprocessing"),
+    contrast:   Optional[float] = typer.Option(None, "--contrast",   help="Contrast factor", rich_help_panel="Image Preprocessing"),
     # Geometry filters
     min_area:   Optional[float] = typer.Option(None, "--min-area",   help="Min polygon area (pre-affine)", rich_help_panel="Geometry filters"),
     min_points: Optional[int]   = typer.Option(None, "--min-points", help="Min ring vertices", rich_help_panel="Geometry filters"),
@@ -81,8 +82,8 @@ def extract_all(
         "width":  _pick(cfg, "width",  width)  or 1000,
         "height": _pick(cfg, "height", height) or 1000,
     }
-    img = _pick(cfg, "image",   image)
-    out = _pick(cfg, "out_dir", out_dir)
+    img = Path(_pick(cfg, "image", image))
+    out = Path(_pick(cfg, "out_dir", out_dir))
 
     if dry_run:
         typer.echo("Resolved configuration:")
@@ -96,9 +97,17 @@ def extract_all(
         raise typer.Exit(code=2)
 
     out.mkdir(parents=True, exist_ok=True)
-    results = _extract_all(img, out, meta)
-    for k, v in results.items(): typer.echo(f"{k}: {v}")
+    results = _write_all(img, out, meta, make_rasters=True)
+    for k, v in results.items():
+        typer.echo(f"{k}: {v}")
     typer.secho(f"[SUCCESS] Outputs in: {out}", fg=typer.colors.GREEN)
 
-if __name__ == "__main__":
+@app.command("test")
+def test():
+    typer.echo("Test command executed successfully!")
+
+def main():
     app()
+
+if __name__ == "__main__":
+    main()

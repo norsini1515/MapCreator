@@ -65,4 +65,36 @@ def extract_all(image: Path, out_dir: Path, meta: dict):
 
     land_gdf, bin_img = image_to_land_gdf(image, meta)
     ocean_gdf, waterb_gdf = water_gdfs_from_binary(bin_img, meta)
+    merged_gdf = build_merged_base(land_gdf, waterb_gdf, ocean_gdf)
+    
+    return land_gdf, waterb_gdf, ocean_gdf, merged_gdf, bin_img
 
+def write_all(image: Path, out_dir: Path, meta: dict, *, make_rasters: bool = True):
+    """
+    Convenience wrapper: run extract_all() and WRITE everything to disk.
+    Returns a dict of output paths.
+    """
+    land_gdf, waterb_gdf, ocean_gdf, merged_gdf, _ = extract_all(image, out_dir, meta)
+
+    land_path   = export_gdf(land_gdf,   out_dir / "land.geojson")
+    water_path  = export_gdf(waterb_gdf, out_dir / "waterbodies.geojson")
+    ocean_path  = export_gdf(ocean_gdf,  out_dir / "ocean.geojson")
+    merged_path = export_gdf(merged_gdf, out_dir / "merged_base_geography.geojson")
+
+    terrain_path = out_dir / "terrain_class_map.tif"
+    climate_path = out_dir / "climate_class_map.tif"
+    if make_rasters:
+        init_empty_raster_pair(
+            terrain_path, climate_path,
+            width=meta["width"], height=meta["height"],
+            extent=meta["extent"], crs=meta["crs"],
+        )
+
+    return {
+        "land": str(land_path),
+        "waterbodies": str(water_path),
+        "ocean": str(ocean_path),
+        "merged": str(merged_path),
+        "terrain": str(terrain_path),
+        "climate": str(climate_path),
+    }

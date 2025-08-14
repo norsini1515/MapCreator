@@ -15,6 +15,7 @@ dependencies = [
   "matplotlib",
   "geopandas",
   "shapely",
+  "plotly",
   "pillow",
   "opencv-python",
   "fiona",
@@ -32,4 +33,4 @@ include = ["mapcreator*"]   # <-- include subpackages like mapcreator.cli
 mapcreator = ["cli/*.yml"]
 
 [project.scripts]
-mapc = "mapcreator.cli.__main__:app"
+mapc = "mapcreator.cli.cli:main"
