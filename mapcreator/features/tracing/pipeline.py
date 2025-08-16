@@ -11,8 +11,10 @@ from .polygonize import contours_to_polygons
 from .gdf_tools import to_gdf, dissolve_class
 from .geo_transform import pixel_affine, apply_affine_to_gdf
 from .exporters import export_gdf
-from .rasters import init_empty_raster_pair
+from .rasters import make_land_water_masks
 from .water_classify import split_ocean_vs_inland, inland_mask_to_polygons
+
+from mapcreator.globals.logutil import info, process_step, error
 
 
 def _affine(meta):
@@ -60,11 +62,18 @@ def build_merged_base(land_gdf: gpd.GeoDataFrame, water_gdf: gpd.GeoDataFrame, o
     return dissolve_class(all_gdf, class_col="class")
 
 
-def extract_all(image: Path, out_dir: Path, meta: dict):
-    out_dir.mkdir(parents=True, exist_ok=True)
-
+def extract_all(image: Path, meta: dict):
+    """
+    Extract all relevant features from the input image.
+    """
+    process_step(f"Extracting features from {image.name}...")
     land_gdf, bin_img = image_to_land_gdf(image, meta)
     ocean_gdf, waterb_gdf = water_gdfs_from_binary(bin_img, meta)
+    print(f"Land GDF: {len(land_gdf)} features, Ocean GDF: {len(ocean_gdf)} features, Waterbody GDF: {len(waterb_gdf)} features")
+    print(f"Land GDF CRS: {land_gdf.crs}, Ocean GDF CRS: {ocean_gdf.crs}, Waterbody GDF CRS: {waterb_gdf.crs}")
+    print(f"Land GDF shape {land_gdf.shape=}, Ocean GDF shape {ocean_gdf.shape}, Waterbody GDP shape {waterb_gdf.shape}\n")
+
+    process_step("Building merged base...")
     merged_gdf = build_merged_base(land_gdf, waterb_gdf, ocean_gdf)
     
     return land_gdf, waterb_gdf, ocean_gdf, merged_gdf, bin_img
@@ -74,27 +83,32 @@ def write_all(image: Path, out_dir: Path, meta: dict, *, make_rasters: bool = Tr
     Convenience wrapper: run extract_all() and WRITE everything to disk.
     Returns a dict of output paths.
     """
-    land_gdf, waterb_gdf, ocean_gdf, merged_gdf, _ = extract_all(image, out_dir, meta)
+    land_gdf, waterb_gdf, ocean_gdf, merged_gdf, _ = extract_all(image, meta)
+
+    out_dir.mkdir(parents=True, exist_ok=True)
 
     land_path   = export_gdf(land_gdf,   out_dir / "land.geojson")
     water_path  = export_gdf(waterb_gdf, out_dir / "waterbodies.geojson")
     ocean_path  = export_gdf(ocean_gdf,  out_dir / "ocean.geojson")
     merged_path = export_gdf(merged_gdf, out_dir / "merged_base_geography.geojson")
 
-    terrain_path = out_dir / "terrain_class_map.tif"
-    climate_path = out_dir / "climate_class_map.tif"
-    if make_rasters:
-        init_empty_raster_pair(
-            terrain_path, climate_path,
-            width=meta["width"], height=meta["height"],
-            extent=meta["extent"], crs=meta["crs"],
-        )
+    land_mask_path, water_mask_path, \
+    terrain_class_path, climate_class_path = make_land_water_masks(
+        merged_gdf, out_dir,
+        width=meta["width"], height=meta["height"],
+        extent=meta["extent"], crs=meta["crs"]
+    )
+    # terrain_path = out_dir / land_mask
+    # climate_path = out_dir / "climate_class_map.tif"
+    # if make_rasters:
+        # init_paintable_class_raster_from_land_mask(land_mask, terrain_path, dtype="uint8", nodata=0)
+        # init_paintable_class_raster_from_land_mask(land_mask, climate_path, dtype="uint8", nodata=0)
 
     return {
         "land": str(land_path),
         "waterbodies": str(water_path),
         "ocean": str(ocean_path),
         "merged": str(merged_path),
-        "terrain": str(terrain_path),
-        "climate": str(climate_path),
+        "terrain": str(terrain_class_path),
+        "climate": str(climate_class_path),
     }

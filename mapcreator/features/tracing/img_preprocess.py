@@ -2,6 +2,7 @@ import cv2
 import numpy as np
 from pathlib import Path
 
+# from mapcreator.globals
 def preprocess_image(img_path: Path, *, contrast_factor=2.0, invert=False, flood_fill=False):
     print(f"Loading image: {img_path}")
     img = cv2.imread(str(img_path), cv2.IMREAD_GRAYSCALE)

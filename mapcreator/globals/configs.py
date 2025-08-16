@@ -1,7 +1,8 @@
 
 #------------------
 # ROOT_DRIVE = 'P:/GitLab/orsin005/miscellaneous'
-ROOT_DRIVE = 'F:/DnD/WorldBuilding'
+# ROOT_DRIVE = 'F:/DnD/WorldBuilding'
+ROOT_DRIVE = 'C:/Users/nicho/Documents/World Building'
 
 
 #WORLD CONFIGURATION

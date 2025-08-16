@@ -2,6 +2,7 @@
 from pathlib import Path
 from typing import Optional, Dict, Any
 import typer, yaml
+from datetime import datetime
 
 # --- Typer app (root has no options) ---
 app = typer.Typer(no_args_is_help=True)
@@ -14,10 +15,10 @@ def _load_yaml(path: Optional[Path]) -> Dict[str, Any]:
     try:
         with open(path, "r") as f:
             cfg = yaml.safe_load(f) or {}
-        typer.echo(f"Using config: {path}")
+        info(f"Using config: {path}")
         return cfg
     except FileNotFoundError:
-        typer.secho(f"(config not found at {path}; using flags/defaults)", fg=typer.colors.YELLOW)
+        error(f"(config not found at {path}; using flags/defaults)")
         return {}
 
 def _pick(cfg: Dict[str, Any], key: str, cli_val):
@@ -26,6 +27,26 @@ def _pick(cfg: Dict[str, Any], key: str, cli_val):
 # import AFTER helpers so the module loads cleanly
 from mapcreator.features.tracing.pipeline import extract_all as _extract_all
 from mapcreator.features.tracing.pipeline import write_all as _write_all
+from mapcreator.globals.logutil import Logger, info, warn, error, success, process_step
+from mapcreator.globals import directories
+
+def _resolve_log_path(cfg, out_dir: Path | None=None) -> Path | None:
+    raw = cfg.get("log_file_name")
+    print(f"{raw=}")
+    if raw is None:
+        return None  # no logging if user didn’t ask
+    if str(raw).lower() == "auto":
+        # default under out_dir/logs (fallback to project ./logs if out_dir missing)
+        base = directories.LOGS_DIR
+        base.mkdir(parents=True, exist_ok=True)
+        return base / f"extract_all_{datetime.now():%Y%m%d_%H%M%S}.log"
+    # Handle {now:...} templating
+    if "{now:" in str(raw):
+        ts = datetime.now()
+        raw = str(raw).format(now=ts)
+        raw = directories.LOGS_DIR / raw
+        raw.parent.mkdir(parents=True, exist_ok=True)
+        return raw
 
 # --- SUBCOMMAND ---
 @app.command("extract-all")
@@ -63,6 +84,7 @@ def extract_all(
     min_points: Optional[int]   = typer.Option(None, "--min-points", help="Min ring vertices", rich_help_panel="Geometry filters"),
     # Utility
     dry_run: bool = typer.Option(False, "--dry-run", help="Print resolved config and exit", rich_help_panel="Utility"),
+    log_file: Optional[Path] = typer.Option(None, "--log-file"),
 ):
     cfg = _load_yaml(config)
 
@@ -82,29 +104,35 @@ def extract_all(
         "width":  _pick(cfg, "width",  width)  or 1000,
         "height": _pick(cfg, "height", height) or 1000,
     }
+    log_path = _resolve_log_path(cfg)
+    print(f"Resolved log path: {log_path}")
+    logger = Logger.setup(logfile_path=log_path)
+
     img = Path(_pick(cfg, "image", image))
     out = Path(_pick(cfg, "out_dir", out_dir))
 
     if dry_run:
-        typer.echo("Resolved configuration:")
-        typer.echo(f"  image: {img}")
-        typer.echo(f"  out_dir: {out}")
-        for k, v in meta.items(): typer.echo(f"  {k}: {v}")
+        info("Resolved configuration:")
+        print(f"  image: {img}")
+        print(f"  out_dir: {out}")
+        for k, v in meta.items(): print(f"  {k}: {v}")
         raise typer.Exit()
 
     if not img or not out:
-        typer.secho("image and out_dir are required (via YAML or flags).", fg=typer.colors.RED)
+        error("image and out_dir are required (via YAML or flags).")
         raise typer.Exit(code=2)
 
     out.mkdir(parents=True, exist_ok=True)
     results = _write_all(img, out, meta, make_rasters=True)
     for k, v in results.items():
-        typer.echo(f"{k}: {v}")
-    typer.secho(f"[SUCCESS] Outputs in: {out}", fg=typer.colors.GREEN)
+        info(f"{k}: {v}")
+    success(f"Extraction completed successfully!, Outputs in: {out}")
+
+    logger.teardown()
 
 @app.command("test")
 def test():
-    typer.echo("Test command executed successfully!")
+    success("Test command executed successfully!")
 
 def main():
     app()
