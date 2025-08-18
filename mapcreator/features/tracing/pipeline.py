@@ -13,6 +13,7 @@ from .geo_transform import pixel_affine, apply_affine_to_gdf
 from .exporters import export_gdf
 from .rasters import make_land_water_masks
 from .water_classify import split_ocean_vs_inland, inland_mask_to_polygons
+from .contour_extraction import contours_from_binary_mask
 
 from mapcreator.globals.logutil import info, process_step, error
 
@@ -40,7 +41,6 @@ def water_gdfs_from_binary(bin_img: np.ndarray, meta: dict):
     ocean_mask, inland_mask = split_ocean_vs_inland(water_mask)
 
     # Ocean as simple shells (external contours)
-    from .contour_extraction import contours_from_binary_mask
     oc_contours = contours_from_binary_mask(ocean_mask)
     oc_polys = contours_to_polygons(oc_contours, min_area=meta.get("min_area", 5.0), min_points=meta.get("min_points", 3))
 
