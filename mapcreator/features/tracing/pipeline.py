@@ -16,6 +16,7 @@ from .water_classify import split_ocean_vs_inland, inland_mask_to_polygons
 from .contour_extraction import contours_from_binary_mask
 
 from mapcreator.globals.logutil import info, process_step, error
+from mapcreator.globals import configs
 
 
 def _affine(meta):
@@ -78,28 +79,29 @@ def extract_all(image: Path, meta: dict):
     
     return land_gdf, waterb_gdf, ocean_gdf, merged_gdf, bin_img
 
-def write_all(image: Path, out_dir: Path, meta: dict, *, make_rasters: bool = True):
+def write_all(image: Path, out_dir: Path, meta: dict):
     """
     Convenience wrapper: run extract_all() and WRITE everything to disk.
     Returns a dict of output paths.
     """
-    land_gdf, waterb_gdf, ocean_gdf, merged_gdf, _ = extract_all(image, meta)
+    land_gdf, waterb_gdf, merged_gdf, _ = extract_all(image, meta)
 
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    land_path   = export_gdf(land_gdf,   out_dir / "land.geojson")
-    water_path  = export_gdf(waterb_gdf, out_dir / "waterbodies.geojson")
-    ocean_path  = export_gdf(ocean_gdf,  out_dir / "ocean.geojson")
-    merged_path = export_gdf(merged_gdf, out_dir / "merged_base_geography.geojson")
+    #vector files
+    land_path   = export_gdf(land_gdf,   out_dir / configs.LAND_TRACING_EXTRACT_NAME)
+    water_path  = export_gdf(waterb_gdf, out_dir / configs.WATER_TRACING_EXTRACT_NAME)
+    merged_path = export_gdf(merged_gdf, out_dir / configs.MERGED_TRACING_EXTRACT_NAME)
 
-    land_mask_path, water_mask_path, \
+    #raster files
+    land_water_mask_path, \
     terrain_class_path, climate_class_path = make_land_water_masks(
         merged_gdf, out_dir,
         width=meta["width"], height=meta["height"],
         extent=meta["extent"], crs=meta["crs"]
     )
-    # terrain_path = out_dir / land_mask
-    # climate_path = out_dir / "climate_class_map.tif"
+    terrain_path = out_dir / "terrain_class_map.tif"
+    climate_path = out_dir / "climate_class_map.tif"
     # if make_rasters:
         # init_paintable_class_raster_from_land_mask(land_mask, terrain_path, dtype="uint8", nodata=0)
         # init_paintable_class_raster_from_land_mask(land_mask, climate_path, dtype="uint8", nodata=0)

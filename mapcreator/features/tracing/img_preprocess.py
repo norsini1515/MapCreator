@@ -2,21 +2,23 @@ import cv2
 import numpy as np
 from pathlib import Path
 
+from mapcreator.globals.logutil import info, process_step, error, setting_config
 # from mapcreator.globals
 def preprocess_image(img_path: Path, *, contrast_factor=2.0, invert=False, flood_fill=False):
-    print(f"Loading image: {img_path}")
+    info(f"Loading image: {img_path}")
+    
     img = cv2.imread(str(img_path), cv2.IMREAD_GRAYSCALE)
     if img is None:
         raise FileNotFoundError(img_path)
-    print(f"Original image shape: {img.shape}")
+    setting_config(f"Original image shape: {img.shape}")
 
     # Adjust contrast
     img = cv2.convertScaleAbs(img, alpha=contrast_factor, beta=0)
-    print(f"Applied contrast factor: {contrast_factor}")
+    setting_config(f"Applied contrast factor: {contrast_factor}")
 
     # Threshold using Otsu's method
     thresh_val, bin_ = cv2.threshold(img, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    print(f"Otsu's threshold value: {thresh_val}")
+    setting_config(f"Otsu's threshold value: {thresh_val}")
 
     # Invert if specified
     if invert:
