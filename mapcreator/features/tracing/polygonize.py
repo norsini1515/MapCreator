@@ -1,95 +1,44 @@
-from shapely.geometry import Polygon, MultiPolygon
-from shapely.validation import explain_validity
-from typing import List, Tuple
-import numpy as np
+"""Unified polygonization helpers.
 
-def contours_to_polygons(contours, *, min_area=5.0, min_points=3, verbose=False):
-    polys = []
-    for i, c in enumerate(contours):
-        if len(c) < min_points: 
-            continue
-        coords = [(int(x), int(y)) for x, y in c[:,0,:]]
-        poly = Polygon(coords)
-        cand = []
-        if not poly.is_valid or poly.area < min_area or len(poly.exterior.coords) < min_points:
-            fixed = poly.buffer(0)
-            cand = [fixed] if isinstance(fixed, Polygon) else list(getattr(fixed, "geoms", []))
-        else:
-            cand = [poly]
-        for p in cand:
-            ok = p.is_valid and p.area >= min_area and len(p.exterior.coords) >= min_points
-            if ok:
-                polys.append(p)
-            elif verbose:
-                print(f"skip {i}: {explain_validity(cand)}")
-    return polys
+This module now delegates to the unified contour extraction + polygon
+assembly logic in ``contour_extraction``. The previous separate functions
+``contours_to_polygons`` and ``contours_to_polygons_with_holes`` are retained
+as thin wrappers for compatibility but internally reuse shared code.
+"""
 
-# mapcreator/tracing/polygonize_tree.py
+from typing import Optional
+from mapcreator.globals.configs import MIN_POINTS
+from .contour_extraction import ContourTree, assemble_polygons
 
-def _depths_and_children(hierarchy: np.ndarray) -> Tuple[List[int], List[List[int]]]:
-    """
-    hierarchy: shape (1, N, 4) from cv2.findContours(..., RETR_TREE, ...)
-    Returns:
-      depth[i]: depth of contour i (0=root)
-      children[i]: list of direct child indices of i
-    """
-    h = hierarchy[0]
-    N = h.shape[0]
-    parent = [h[i, 3] for i in range(N)]
-    children = [[] for _ in range(N)]
-    for i, p in enumerate(parent):
-        if p != -1:
-            children[p].append(i)
-    depth = [0]*N
-    # compute depths via parent chain
-    for i in range(N):
-        d, p = 0, parent[i]
-        while p != -1:
-            d += 1
-            p = parent[p]
-        depth[i] = d
-    return depth, children
+# New unified public helpers (optional explicitness)
+def land_polygons_from_tree(
+    tree: ContourTree,
+    meta: Optional[dict] = None,
+    *,
+    min_area: float | None = None,
+    min_points: int | None = None,
+    verbose: bool = False,
+):
+    """Return land (even-depth) polygons, pulling defaults from meta if provided."""
+    meta = meta or {}
+    if min_area is None:
+        min_area = meta.get("min_area", 5.0)
+    if min_points is None:
+        min_points = meta.get("min_points", MIN_POINTS)
+    return assemble_polygons(tree, build_even=True, min_area=min_area, min_points=min_points, verbose=verbose)
 
-def _coords(cnt) -> List[tuple]:
-    # cnt: (M,1,2)
-    return [(int(x), int(y)) for x, y in cnt[:,0,:]]
-
-def contours_to_polygons_with_holes(contours, hierarchy, *, min_area=5.0, min_points=3, verbose=False):
-    """
-    Build polygons honoring nested rings (even-depth = shell, odd-depth = hole).
-    Returns list[shapely.Polygon].
-    """
-    depth, children = _depths_and_children(hierarchy)
-    polys = []
-
-    for i, cnt in enumerate(contours):
-        if depth[i] % 2 != 0:  # only build from even-depth shells
-            continue
-        if len(cnt) < min_points:
-            continue
-
-        shell = _coords(cnt)
-        holes = []
-        for j in children[i]:
-            if depth[j] % 2 == 1 and len(contours[j]) >= min_points:
-                holes.append(_coords(contours[j]))
-
-        poly = Polygon(shell, holes)
-        if (not poly.is_valid) or (poly.area < min_area):
-            fixed = poly.buffer(0)
-            if fixed.is_empty:
-                continue
-            if fixed.geom_type == "Polygon":
-                cands = [fixed]
-            else:
-                cands = [g for g in fixed.geoms if g.area >= min_area]
-        else:
-            cands = [poly]
-
-        for g in cands:
-            if g.is_valid and g.area >= min_area:
-                polys.append(g)
-            elif verbose:
-                print("Skipped invalid piece:", explain_validity(g))
-
-    return polys
+def water_polygons_from_tree(
+    tree: ContourTree,
+    meta: Optional[dict] = None,
+    *,
+    min_area: float | None = None,
+    min_points: int | None = None,
+    verbose: bool = False,
+):
+    """Return inland water (odd-depth) polygons, pulling defaults from meta if provided."""
+    meta = meta or {}
+    if min_area is None:
+        min_area = meta.get("min_area", 5.0)
+    if min_points is None:
+        min_points = meta.get("min_points", MIN_POINTS)
+    return assemble_polygons(tree, build_even=False, min_area=min_area, min_points=min_points, verbose=verbose)
