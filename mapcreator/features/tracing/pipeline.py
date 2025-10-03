@@ -1,4 +1,7 @@
-"""Tracing Pipeline
+"""
+mapcreator/features/tracing/pipeline.py
+
+Tracing Pipeline
 ====================
 
 High–level overview of the image -> vector -> raster flow. This module is the
@@ -40,7 +43,7 @@ from shapely.geometry import box
 
 from .img_preprocess import preprocess_image
 from .contour_extraction import extract_contour_tree
-from .polygonize import land_polygons_from_tree, water_polygons_from_tree
+from .polygonize import build_polygons_from_tree
 from .gdf_tools import to_gdf, dissolve_class
 from .geo_transform import pixel_affine, apply_affine_to_gdf
 from .exporters import export_gdf
@@ -53,6 +56,22 @@ from mapcreator.globals import configs
 
 def _affine(meta):
     return pixel_affine(meta["width"], meta["height"], **meta["extent"])
+
+def extract_class_from_binary(bin_img: np.ndarray, meta: dict, class_name: str):
+    tree = extract_contour_tree(bin_img > 0)
+
+    if not tree.contours:
+        return gpd.GeoDataFrame(columns=["class", "depth", "geometry"], crs=meta.get("crs"))
+    
+    land_polys, water_polys = build_polygons_from_tree(tree, meta=meta)
+
+    #build out metadata of the 
+
+    if not land_polys or not water_polys:
+        return gpd.GeoDataFrame(columns=["class", "depth", "geometry"], crs=meta.get("crs"))
+    
+    if class_name == "land":
+        pass
 
 def land_gdf_from_binary(bin_img: np.ndarray, meta: dict):
     """Build land GeoDataFrame from a binary land mask (1=land, 0=water) using unified contour tree."""

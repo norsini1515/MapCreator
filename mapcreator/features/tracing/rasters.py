@@ -1,3 +1,12 @@
+"""
+mapcreator/features/tracing/rasters.py
+
+Raster creation and initialization from vector data.
+This module handles rasterization of land/water masks and initialization
+of paintable class rasters (terrain, climate) based on the land mask.
+
+"""
+
 import numpy as np
 import rasterio
 from rasterio.transform import from_bounds

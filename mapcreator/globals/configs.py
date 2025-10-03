@@ -8,15 +8,14 @@ WORLD_NAME = 'Atriath'
 #---------------------
 #POLYGON GENERATION
 #---------------------
-MIN_AREA = 5
-MIN_POINTS = 4
+MIN_AREA = 2
+MIN_POINTS = 3
 
 
 #---------------------
 # CONFIGURATION FILES
 #---------------------
 IMAGE_TRACING_EXTRACT_CONFIGS_NAME = 'extract_base_world_configs.yml'
-
 
 #--------------------
 # Map Export Names

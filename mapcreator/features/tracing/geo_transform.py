@@ -1,4 +1,7 @@
 """
+mapcreator/features/tracing/geo_transform.py
+
+Geo-transform utilities for pixel-to-world coordinate conversion.
 Set your continent extent once (e.g., 0..3500 “mi” each way) and everything lands in that world grid. Later you can reproject to a real CRS.
 """
 from affine import Affine
