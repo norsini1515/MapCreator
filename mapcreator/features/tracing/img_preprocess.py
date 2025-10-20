@@ -5,6 +5,26 @@ from pathlib import Path
 from mapcreator.globals.logutil import info, process_step, error, setting_config
 # from mapcreator.globals
 def preprocess_image(img_path: Path, *, contrast_factor=2.0, invert=False, flood_fill=False):
+    """Load and preprocess image to binary mask.
+    Steps:
+      1. Load as grayscale
+      2. Adjust contrast (linear scaling)
+      3. Otsu thresholding to binary
+      4. Optional inversion
+      5. Optional flood fill to close holes in land
+      Returns binary mask (np.ndarray, dtype=uint8, values 0/1)
+    Parameters
+    ----------
+    img_path : Path
+        Path to input image file.
+    contrast_factor : float
+        Contrast scaling factor (alpha) for cv2.convertScaleAbs.
+    invert : bool
+        If True, invert binary image.
+    flood_fill : bool
+        If True, apply flood fill to close holes in land areas.  
+      """
+    process_step("Preprocessing image")
     info(f"Loading image: {img_path}")
     
     img = cv2.imread(str(img_path), cv2.IMREAD_GRAYSCALE)

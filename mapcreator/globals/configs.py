@@ -11,6 +11,12 @@ WORLD_NAME = 'Atriath'
 MIN_AREA = 2
 MIN_POINTS = 3
 
+LAND_DEFS = {"class": "land", "depth": None}
+WATERBODY_DEFS = {"class": "waterbody", "depth": None}
+
+#----------------------
+
+
 
 #---------------------
 # CONFIGURATION FILES
@@ -20,6 +26,6 @@ IMAGE_TRACING_EXTRACT_CONFIGS_NAME = 'extract_base_world_configs.yml'
 #--------------------
 # Map Export Names
 #--------------------
-LAND_TRACING_EXTRACT_NAME = "land.geojson"
-WATER_TRACING_EXTRACT_NAME = "waterbodies.geojson"
-MERGED_TRACING_EXTRACT_NAME = "merged_base_geography.geojson"
+LAND_TRACING_EXTRACT_NAME = "land.shp"
+WATER_TRACING_EXTRACT_NAME = "waterbodies.shp"
+MERGED_TRACING_EXTRACT_NAME = "merged_base_geography.shp"

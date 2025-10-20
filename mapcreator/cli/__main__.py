@@ -20,13 +20,16 @@ def _load_yaml(path: Optional[Path]) -> Dict[str, Any]:
         return {}
 
 def _pick(cfg: Dict[str, Any], key: str, cli_val):
-    return cli_val if cli_val is not None else cfg.get(key)
+    config_val = cfg.get(key)
+    if key=='verbose':
+        print(f"pick {key}: cli_val={cli_val}, cfg.get={config_val}")
+    return config_val if config_val is not None else cli_val
 
 # import AFTER helpers so the module loads cleanly
-from mapcreator.features.tracing.pipeline import extract_all as _extract_all
 from mapcreator.features.tracing.pipeline import write_all as _write_all
 from mapcreator.globals.logutil import Logger, info, warn, error, success, process_step, setting_config
 from mapcreator.globals import directories, configs
+from mapcreator.features.tracing.reclass import burn_polygons_into_class_raster, apply_palette_from_yaml
 
 # DEFAULT_CONFIG_FILE_PATH
 DEFAULT_CONFIG_FILE_PATH = directories.CONFIG_DIR / configs.IMAGE_TRACING_EXTRACT_CONFIGS_NAME
@@ -97,6 +100,8 @@ def extract_all(
     logger = Logger(logfile_path=log_path)
     # load configurations
     cfg = _load_yaml(config)
+    print("Using config file:", cfg)
+    print(_pick(cfg, "verbose", verbose))
 
     meta = {
         "log_file": log_path,
@@ -122,6 +127,10 @@ def extract_all(
         "min_area": _pick(cfg, "min_area", min_area) or 5.0,
         "min_points": _pick(cfg, "min_points", min_points) or 3,
     }
+    # if meta["verbose"]:
+    setting_config("Verbose logging enabled")
+    for k, v in meta.items():
+        setting_config(f"  {k}: {v}")
 
     img = Path(_pick(cfg, "image", image))
     out = Path(_pick(cfg, "out_dir", out_dir))
@@ -149,6 +158,38 @@ def test():
 
 def main():
     app()
+
+@app.command("recolor")
+def recolor(
+    raster: Path = typer.Argument(..., help="Path to class raster (world/terrain/climate)."),
+    section: str = typer.Option("terrain", "--section", "-s", help="Section in YAML: base|terrain|climate"),
+    config: Path = typer.Option(directories.CONFIG_DIR / "raster_classifications.yml", "--config", "-c", help="YAML file for class colors."),
+):
+    """Reapply palette from YAML to an existing class raster (in place)."""
+    cfg = _load_yaml(config)
+    apply_palette_from_yaml(raster, cfg, section)
+
+@app.command("paint")
+def paint(
+    raster: Path = typer.Argument(..., help="Path to terrain/climate class raster to edit."),
+    polygons: Path = typer.Argument(..., help="Vector file with polygons to burn (GeoJSON/Shapefile)."),
+    label: str = typer.Option(..., "--label", "-l", help="Class label or ID to assign (e.g., 'mountain' or 10)."),
+    section: str = typer.Option("terrain", "--section", "-s", help="Section in YAML: base|terrain|climate"),
+    config: Path = typer.Option(directories.CONFIG_DIR / "raster_classifications.yml", "--config", "-c", help="YAML file for class ids/colors."),
+    output: Path = typer.Option(None, "--output", "-o", help="Optional output path; if omitted, writes <name>_edited.tif"),
+    overwrite: bool = typer.Option(False, "--overwrite", help="Edit raster in place."),
+):
+    """Burn polygons into an existing class raster as a specific class label/ID."""
+    cfg = _load_yaml(config)
+    burn_polygons_into_class_raster(
+        raster_path=raster,
+        polygons_path=polygons,
+        class_config=cfg,
+        section=section,
+        label_or_id=label,
+        output=output,
+        overwrite=overwrite,
+    )
 
 if __name__ == "__main__":
     main()

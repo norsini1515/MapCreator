@@ -94,7 +94,7 @@ def _compute_children(hier: np.ndarray) -> List[List[int]]:
             child = hier[child, 0]  # next sibling
     return children
 
-def extract_contour_tree(mask: np.ndarray) -> ContourTree:
+def extract_contour_tree(mask: np.ndarray, verbose: bool = False) -> ContourTree:
     """
     Extract the full contour tree from a binary mask.
 
@@ -102,7 +102,8 @@ def extract_contour_tree(mask: np.ndarray) -> ContourTree:
     ----------
     mask : np.ndarray
         Binary-ish mask. Any nonzero is treated as foreground.
-
+    verbose : bool
+        If True, print diagnostics.
     Returns
     -------
     ContourTree
@@ -126,7 +127,13 @@ def extract_contour_tree(mask: np.ndarray) -> ContourTree:
     depths = _compute_depths(hier)
     kids = _compute_children(hier)
 
-    return ContourTree(contours, hierarchy, depths, kids)
+    tree = ContourTree(contours, hier, depths, kids)
+    
+    if verbose:
+        _plot_contour_tree(tree)
+        # contour_tree_diagnostics(tree)
+
+    return tree
 
 def _cnt_coords(cnt: Contour) -> List[Tuple[int, int]]:
     """Convenience: return a simple list of (x, y) from an OpenCV contour."""
