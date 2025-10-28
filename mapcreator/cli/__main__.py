@@ -7,8 +7,6 @@ from datetime import datetime
 # --- Typer app (root has no options) ---
 app = typer.Typer(no_args_is_help=True)
 
-DEFAULT_CONFIG_PATH = Path(__file__).parent / "extract_base_world_configs.yml"
-
 def _load_yaml(path: Optional[Path]) -> Dict[str, Any]:
     if not path:
         return {}
@@ -22,38 +20,38 @@ def _load_yaml(path: Optional[Path]) -> Dict[str, Any]:
         return {}
 
 def _pick(cfg: Dict[str, Any], key: str, cli_val):
-    return cli_val if cli_val is not None else cfg.get(key)
+    config_val = cfg.get(key)
+    if key=='verbose':
+        print(f"pick {key}: cli_val={cli_val}, cfg.get={config_val}")
+    return config_val if config_val is not None else cli_val
 
 # import AFTER helpers so the module loads cleanly
-from mapcreator.features.tracing.pipeline import extract_all as _extract_all
 from mapcreator.features.tracing.pipeline import write_all as _write_all
-from mapcreator.globals.logutil import Logger, info, warn, error, success, process_step
-from mapcreator.globals import directories
+from mapcreator.globals.logutil import Logger, info, warn, error, success, process_step, setting_config
+from mapcreator.globals import directories, configs
+from mapcreator.features.tracing.reclass import burn_polygons_into_class_raster, apply_palette_from_yaml
 
-def _resolve_log_path(cfg, out_dir: Path | None=None) -> Path | None:
-    raw = cfg.get("log_file_name")
-    print(f"{raw=}")
-    if raw is None:
-        return None  # no logging if user didn’t ask
-    if str(raw).lower() == "auto":
-        # default under out_dir/logs (fallback to project ./logs if out_dir missing)
-        base = directories.LOGS_DIR
-        base.mkdir(parents=True, exist_ok=True)
-        return base / f"extract_all_{datetime.now():%Y%m%d_%H%M%S}.log"
-    # Handle {now:...} templating
-    if "{now:" in str(raw):
-        ts = datetime.now()
-        raw = str(raw).format(now=ts)
-        raw = directories.LOGS_DIR / raw
-        raw.parent.mkdir(parents=True, exist_ok=True)
-        return raw
+# DEFAULT_CONFIG_FILE_PATH
+DEFAULT_CONFIG_FILE_PATH = directories.CONFIG_DIR / configs.IMAGE_TRACING_EXTRACT_CONFIGS_NAME
+# LOG_FILE_NAME
+LOG_FILE_NAME =  f"{configs.WORLD_NAME.replace(' ', '_')}_extract.log"
+
+
+def _resolve_log_path() -> Path:
+    '''
+    Resolve the log file path from the config or defaults.
+    '''
+    # default under out_dir/logs (fallback to project ./logs if out_dir missing)
+    base = directories.LOGS_DIR
+    base.mkdir(parents=True, exist_ok=True)
+    return base / f"{LOG_FILE_NAME}{datetime.now():%Y%m%d_%H%M%S}.log"
 
 # --- SUBCOMMAND ---
 @app.command("extract-all")
 def extract_all(
     # I/O
     config: Optional[Path] = typer.Option(
-        DEFAULT_CONFIG_PATH, "--config", "-c",
+        DEFAULT_CONFIG_FILE_PATH, "--config", "-c",
         help="YAML file with parameters. Flags override YAML.",
         rich_help_panel="I/O"
     ),
@@ -84,38 +82,62 @@ def extract_all(
     min_points: Optional[int]   = typer.Option(None, "--min-points", help="Min ring vertices", rich_help_panel="Geometry filters"),
     # Utility
     dry_run: bool = typer.Option(False, "--dry-run", help="Print resolved config and exit", rich_help_panel="Utility"),
-    log_file: Optional[Path] = typer.Option(None, "--log-file"),
+    verbose: bool = typer.Option(False, "--verbose", help="Enable verbose logging", rich_help_panel="Utility"),
 ):
+    '''
+    Extract all features from a raster image.
+    The main processing steps include:
+    1. Loading the image
+    2. Applying preprocessing
+    3. Extracting features
+    4. Saving the results
+
+    Optionals:
+
+    '''
+    # Set up the logging configuration
+    log_path = _resolve_log_path()
+    logger = Logger(logfile_path=log_path)
+    # load configurations
     cfg = _load_yaml(config)
+    print("Using config file:", cfg)
+    print(_pick(cfg, "verbose", verbose))
 
     meta = {
-        "crs": _pick(cfg, "crs", crs) or "EPSG:3857",
-        "invert": _pick(cfg, "invert", invert) or False,
-        "flood_fill": _pick(cfg, "flood_fill", flood_fill) or False,
-        "contrast": _pick(cfg, "contrast", contrast) or 2.0,
-        "min_area": _pick(cfg, "min_area", min_area) or 5.0,
-        "min_points": _pick(cfg, "min_points", min_points) or 3,
+        "log_file": log_path,
+        "verbose": _pick(cfg, "verbose", verbose) or False,
+        "image": _pick(cfg, "image", image) or None,
+        "out_dir": _pick(cfg, "out_dir", out_dir) or None,
+        
+        "width": _pick(cfg, "width", width) or 1000,
+        "height": _pick(cfg, "height", height) or 1000,
         "extent": dict(
             xmin=_pick(cfg, "xmin", xmin) or 0.0,
             ymin=_pick(cfg, "ymin", ymin) or 0.0,
             xmax=_pick(cfg, "xmax", xmax) or 3500.0,
             ymax=_pick(cfg, "ymax", ymax) or 3500.0,
         ),
-        "width":  _pick(cfg, "width",  width)  or 1000,
-        "height": _pick(cfg, "height", height) or 1000,
+
+        "crs": _pick(cfg, "crs", crs) or "EPSG:3857",
+        
+        "invert": _pick(cfg, "invert", invert) or False,
+        "flood_fill": _pick(cfg, "flood_fill", flood_fill) or False,
+
+        "contrast": _pick(cfg, "contrast", contrast) or 2.0,
+        "min_area": _pick(cfg, "min_area", min_area) or 5.0,
+        "min_points": _pick(cfg, "min_points", min_points) or 3,
     }
-    log_path = _resolve_log_path(cfg)
-    print(f"Resolved log path: {log_path}")
-    logger = Logger.setup(logfile_path=log_path)
+    # if meta["verbose"]:
+    setting_config("Verbose logging enabled")
+    for k, v in meta.items():
+        setting_config(f"  {k}: {v}")
 
     img = Path(_pick(cfg, "image", image))
     out = Path(_pick(cfg, "out_dir", out_dir))
 
     if dry_run:
         info("Resolved configuration:")
-        print(f"  image: {img}")
-        print(f"  out_dir: {out}")
-        for k, v in meta.items(): print(f"  {k}: {v}")
+        for k, v in meta.items(): setting_config(f"  {k}: {v}")
         raise typer.Exit()
 
     if not img or not out:
@@ -123,7 +145,7 @@ def extract_all(
         raise typer.Exit(code=2)
 
     out.mkdir(parents=True, exist_ok=True)
-    results = _write_all(img, out, meta, make_rasters=True)
+    results = _write_all(img, out, meta)
     for k, v in results.items():
         info(f"{k}: {v}")
     success(f"Extraction completed successfully!, Outputs in: {out}")
@@ -136,6 +158,38 @@ def test():
 
 def main():
     app()
+
+@app.command("recolor")
+def recolor(
+    raster: Path = typer.Argument(..., help="Path to class raster (world/terrain/climate)."),
+    section: str = typer.Option("terrain", "--section", "-s", help="Section in YAML: base|terrain|climate"),
+    config: Path = typer.Option(directories.CONFIG_DIR / "raster_classifications.yml", "--config", "-c", help="YAML file for class colors."),
+):
+    """Reapply palette from YAML to an existing class raster (in place)."""
+    cfg = _load_yaml(config)
+    apply_palette_from_yaml(raster, cfg, section)
+
+@app.command("paint")
+def paint(
+    raster: Path = typer.Argument(..., help="Path to terrain/climate class raster to edit."),
+    polygons: Path = typer.Argument(..., help="Vector file with polygons to burn (GeoJSON/Shapefile)."),
+    label: str = typer.Option(..., "--label", "-l", help="Class label or ID to assign (e.g., 'mountain' or 10)."),
+    section: str = typer.Option("terrain", "--section", "-s", help="Section in YAML: base|terrain|climate"),
+    config: Path = typer.Option(directories.CONFIG_DIR / "raster_classifications.yml", "--config", "-c", help="YAML file for class ids/colors."),
+    output: Path = typer.Option(None, "--output", "-o", help="Optional output path; if omitted, writes <name>_edited.tif"),
+    overwrite: bool = typer.Option(False, "--overwrite", help="Edit raster in place."),
+):
+    """Burn polygons into an existing class raster as a specific class label/ID."""
+    cfg = _load_yaml(config)
+    burn_polygons_into_class_raster(
+        raster_path=raster,
+        polygons_path=polygons,
+        class_config=cfg,
+        section=section,
+        label_or_id=label,
+        output=output,
+        overwrite=overwrite,
+    )
 
 if __name__ == "__main__":
     main()

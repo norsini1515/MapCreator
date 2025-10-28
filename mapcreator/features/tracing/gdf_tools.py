@@ -12,3 +12,11 @@ def to_gdf(polygons, metadata=None, crs="EPSG:3857"):
 
 def dissolve_class(gdf: gpd.GeoDataFrame, class_col="class"):
     return gdf.dissolve(by=class_col, as_index=False)
+
+def _ensure_crs(gdf, crs):
+    if gdf.crs is None:
+        raise ValueError("merged_gdf.crs is None; set it before rasterizing.")
+    if str(gdf.crs) != str(crs):
+        # safer to reproject than fail
+        return gdf.to_crs(crs)
+    return gdf

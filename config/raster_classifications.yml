@@ -1,0 +1,30 @@
+classes:
+  base:
+    waterbody: 0
+    land: 1
+
+  terrain:
+    waterbody: 0
+    land: 1
+    # add: mountain: 10, hill: 11, plateau: 12, valley: 13, ...
+  climate:
+    waterbody: 0
+    land: 1
+    # add Koppen-like: Af: 20, Am: 21, Aw: 22, BWh: 30, BWk: 31, BSh: 32, BSk: 33, ...
+
+colors:
+  
+  base:
+    0: "#8BBBEB"   # waterbody/ocean
+    1: "#DDFFBE"   # land
+  #
+  terrain:
+    0: "#8BBBEB"
+    1: "#000000"
+    # 10: "#996633"   # mountain
+    # 11: "#CC9966"   # hill
+  climate:
+    0: "#8BBBEB"
+    1: "#000000"
+    # 20: "#00A651"   # Af
+    # 21: "#33B56B"   # Am

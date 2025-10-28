@@ -1,3 +1,10 @@
+"""
+mapcreator/features/tracing/water_classify.py
+
+Water classification and inland/ocean split.
+This module provides functions to distinguish ocean from inland water
+using flood-fill, and to polygonize inland water with nesting (islands in lakes).
+"""
 import numpy as np
 import cv2
 from .contour_extraction import contours_from_binary_mask_tree

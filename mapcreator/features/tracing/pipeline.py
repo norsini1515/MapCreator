@@ -1,114 +1,205 @@
+"""
+mapcreator/features/tracing/pipeline.py
+
+Tracing Pipeline
+====================
+
+High–level overview of the image -> vector -> raster flow. This module is the
+entry point for turning a hand‑prepared grayscale basemap into geodata layers
+and starter rasters.
+
+Processing Steps
+----------------
+1. Preprocess image (contrast, threshold, optional invert / flood fill) -> 0/1 land mask
+2. Detect external contours on land mask -> land polygons (simple shells only)
+3. Derive water mask as the inverse of land mask (no need to compute both upstream)
+4. Split water mask into:
+    - ocean (water connected to image border via flood fill)
+    - inland water (remaining water = lakes, seas)
+5. Polygonize:
+    - ocean: external contours only (no hole handling required)
+    - inland: full contour tree -> polygons with holes (islands inside lakes)
+6. Merge all classed geometries (land, waterbody, ocean) and dissolve by class
+7. Rasterize classes once to produce land_mask (1 = land, 0 = water); derive water_mask by inversion
+8. Initialize terrain/climate class rasters as copies of the land mask (paintable later)
+
+Key Simplification
+------------------
+Land and water masks are mathematical inverses at this stage, so we only
+explicitly rasterize land. Water is computed as ``1 - land``. This avoids
+drift between two parallel code paths and makes semantics explicit.
+
+Returned Objects
+----------------
+extract_all() returns: (land_gdf, waterbody_gdf, ocean_gdf, merged_gdf, bin_img)
+
+"""
+
 from pathlib import Path
+import sys
+from affine import Affine
 import numpy as np
 import geopandas as gpd
 import pandas as pd
 from shapely.geometry import box
+from matplotlib import pyplot as plt
+
 
 from .img_preprocess import preprocess_image
-from .contour_extraction import find_external_contours
-# from .polygonize import contours_to_polygons  # keep simple for land shells
-from .polygonize import contours_to_polygons
-from .gdf_tools import to_gdf, dissolve_class
+from .polygonize import extract_polygons_from_binary
+from .gdf_tools import to_gdf
 from .geo_transform import pixel_affine, apply_affine_to_gdf
 from .exporters import export_gdf
-from .rasters import make_land_water_masks
-from .water_classify import split_ocean_vs_inland, inland_mask_to_polygons
-from .contour_extraction import contours_from_binary_mask
+from .rasters import make_class_rasters
+import yaml
+from pathlib import Path as _Path
+# from .water_classify import split_ocean_vs_inland, inland_mask_to_polygons
 
 from mapcreator.globals.logutil import info, process_step, error
+from mapcreator.globals import configs
 
 
-def _affine(meta):
+def _affine(meta) -> Affine:
     return pixel_affine(meta["width"], meta["height"], **meta["extent"])
 
+## extract_polygons_from_binary moved to polygonize.py to keep even/odd semantics local to polygonization
 
-def image_to_land_gdf(img_path: Path, meta: dict):
+def build_merged_base(land_gdf: gpd.GeoDataFrame, water_gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
+    parts = [df for df in [land_gdf, water_gdf] if not df.empty]
+    if not parts:
+        return gpd.GeoDataFrame(columns=["class", "geometry"], crs=land_gdf.crs)
+    all_gdf = gpd.GeoDataFrame(pd.concat(parts, ignore_index=True), crs=land_gdf.crs)
+    return all_gdf #dissolve_class(all_gdf, class_col="class")
+
+def classify_polygons(polygons_with_depths, class_defs: dict, meta: dict) -> gpd.GeoDataFrame:
+    """Build a GeoDataFrame for a set of polygons with depth using provided class definitions.
+
+    - polygons_with_depths: expected as [(geom, depth), ...], but will accept [geom, ...] and set depth=None
+    - class_defs: base attributes to apply (e.g., {"class": "land"}); any provided 'depth' will be overridden per feature
+    - meta: should contain 'crs'
+    """
+    process_step(f"Classifying {len(polygons_with_depths)} polygons with defs {class_defs}")
+
+    columns = list(class_defs.keys()) + ["geometry"]
+    if not polygons_with_depths:
+        return gpd.GeoDataFrame(columns=columns, crs=meta.get("crs"))
+
+    # Support both tuples and plain geometries
+    if isinstance(polygons_with_depths[0], tuple) and len(polygons_with_depths[0]) == 2:
+        geoms = [g for (g, _d) in polygons_with_depths]
+        depths = [_d for (_g, _d) in polygons_with_depths]
+    else:
+        geoms = list(polygons_with_depths)
+        depths = [None] * len(geoms)
+
+    # Merge class defs and inject depth list
+    class_metadata = dict(class_defs or {})
+    class_metadata["depth"] = depths
+    if "class" not in class_metadata:
+        class_metadata["class"] = "unknown"
+
+    gdf = to_gdf(geoms, class_metadata, crs=meta.get("crs"))
+    # Ensure expected column order when possible
+    existing = [c for c in columns if c in gdf.columns]
+    gdf = gdf[existing + [c for c in gdf.columns if c not in existing]]
+    return gdf
+
+def classify_and_transform(polygons_with_depths, class_defs: dict, meta: dict) -> gpd.GeoDataFrame:
+    """Classify polygons and apply pixel->map affine in one step."""
+    gdf = classify_polygons(polygons_with_depths, class_defs, meta)
+    if not gdf.empty:
+        gdf = apply_affine_to_gdf(gdf, _affine(meta))
+    return gdf
+
+def vectorize_image_to_gdfs(image: Path, meta: dict) -> tuple[gpd.GeoDataFrame, gpd.GeoDataFrame, gpd.GeoDataFrame]:
+    """High-level extraction driver.
+
+    Steps:
+      1. Preprocess -> binary land mask (1=land)
+      2. Land polygons from binary
+      3. Ocean + inland water polygons from binary
+      4. Merge + dissolve
+    Returns (land_gdf, waterbody_gdf, ocean_gdf, merged_gdf, bin_img)
+    """
+    process_step(f"Extracting even and odd features from {image.name}...")
+    
+    #indicates if verbose logging is on
+    verbose = meta.get("verbose", False)
+
+    # Step 1: Preprocess image to binary mask
+    process_step("Step 1: Preprocessing image to binary mask...")
     bin_img = preprocess_image(
-        img_path,
+        image,
         contrast_factor=meta.get("contrast", 2.0),
         invert=meta.get("invert", False),
         flood_fill=meta.get("flood_fill", False),
     )
-    contours = find_external_contours((bin_img > 0).astype("uint8") * 255)
-    polys = contours_to_polygons(contours, min_area=meta.get("min_area", 5.0), min_points=meta.get("min_points", 3))
-    land = to_gdf(polys, {"class": "land"}, crs=meta["crs"]) if polys else gpd.GeoDataFrame(columns=["class", "geometry"], crs=meta["crs"]) 
-    A = _affine(meta)
-    return apply_affine_to_gdf(land, A), bin_img
+    
+    # Step 2: Extract the even and odd contours from the binary image
+    process_step("Step 2: Extracting even and odd contours from binary image...")
+    even_polys, odd_polys = extract_polygons_from_binary(bin_img=bin_img, meta=meta, verbose=verbose)
+    
+    if not even_polys or not odd_polys:
+        raise ValueError("No even (land) or odd (water) polygons extracted; check input image and preprocessing settings.")
+    if verbose:
+        info(f"Even (land-view) Polygons: {len(even_polys)}")
+        info(f"Odd (water-view) Polygons: {len(odd_polys)}")
 
-
-def water_gdfs_from_binary(bin_img: np.ndarray, meta: dict):
-    water_mask = (bin_img == 0).astype("uint8")
-    ocean_mask, inland_mask = split_ocean_vs_inland(water_mask)
-
-    # Ocean as simple shells (external contours)
-    oc_contours = contours_from_binary_mask(ocean_mask)
-    oc_polys = contours_to_polygons(oc_contours, min_area=meta.get("min_area", 5.0), min_points=meta.get("min_points", 3))
-
-    # Inland with holes (nested islands)
-    in_polys = inland_mask_to_polygons(inland_mask, min_area=meta.get("min_area", 5.0), min_points=meta.get("min_points", 3))
-
-    ocean = to_gdf(oc_polys, {"class": "ocean"}, crs=meta["crs"]) if oc_polys else gpd.GeoDataFrame(columns=["class", "geometry"], crs=meta["crs"]) 
-    waterb = to_gdf(in_polys, {"class": "waterbody"}, crs=meta["crs"]) if in_polys else gpd.GeoDataFrame(columns=["class", "geometry"], crs=meta["crs"]) 
-
-    A = _affine(meta)
-    return apply_affine_to_gdf(ocean, A), apply_affine_to_gdf(waterb, A)
-
-
-def build_merged_base(land_gdf: gpd.GeoDataFrame, water_gdf: gpd.GeoDataFrame, ocean_gdf: gpd.GeoDataFrame):
-    parts = [df for df in [land_gdf, water_gdf, ocean_gdf] if not df.empty]
-    if not parts:
-        return gpd.GeoDataFrame(columns=["class", "geometry"], crs=land_gdf.crs)
-    all_gdf = gpd.GeoDataFrame(pd.concat(parts, ignore_index=True), crs=land_gdf.crs)
-    return dissolve_class(all_gdf, class_col="class")
-
-
-def extract_all(image: Path, meta: dict):
-    """
-    Extract all relevant features from the input image.
-    """
-    process_step(f"Extracting features from {image.name}...")
-    land_gdf, bin_img = image_to_land_gdf(image, meta)
-    ocean_gdf, waterb_gdf = water_gdfs_from_binary(bin_img, meta)
-    print(f"Land GDF: {len(land_gdf)} features, Ocean GDF: {len(ocean_gdf)} features, Waterbody GDF: {len(waterb_gdf)} features")
-    print(f"Land GDF CRS: {land_gdf.crs}, Ocean GDF CRS: {ocean_gdf.crs}, Waterbody GDF CRS: {waterb_gdf.crs}")
-    print(f"Land GDF shape {land_gdf.shape=}, Ocean GDF shape {ocean_gdf.shape}, Waterbody GDP shape {waterb_gdf.shape}\n")
+    # Step 3: Classify polygons into land / waterbody GDFs and transform
+    process_step("Step 3: Building land and waterbody GeoDataFrames...")
+    land_gdf = classify_and_transform(even_polys, configs.LAND_DEFS, meta)
+    water_gdf = classify_and_transform(odd_polys, configs.WATERBODY_DEFS, meta)
+    
+    if verbose:
+        info(f"\nLand GDF CRS: {land_gdf.crs}, shape {land_gdf.shape}")
+        info(f"Water GDF CRS: {water_gdf.crs}, shape {water_gdf.shape}")
 
     process_step("Building merged base...")
-    merged_gdf = build_merged_base(land_gdf, waterb_gdf, ocean_gdf)
+    merged_gdf = build_merged_base(land_gdf, water_gdf)
+    info(f"Merged GDF: {len(merged_gdf)} features, CRS: {merged_gdf.crs}, shape {merged_gdf.shape}\n")
+    merged_gdf.plot(column="class", legend=True)
+    plt.show()
     
-    return land_gdf, waterb_gdf, ocean_gdf, merged_gdf, bin_img
+    return land_gdf, water_gdf, merged_gdf
 
-def write_all(image: Path, out_dir: Path, meta: dict, *, make_rasters: bool = True):
-    """
-    Convenience wrapper: run extract_all() and WRITE everything to disk.
-    Returns a dict of output paths.
-    """
-    land_gdf, waterb_gdf, ocean_gdf, merged_gdf, _ = extract_all(image, meta)
+def write_all(image: Path, out_dir: Path, meta: dict):
+    """Run full extraction and write all vector + raster products.
 
+    Returns dict[str, str] of output paths.
+    """
+    land_gdf, water_gdf, merged_gdf = vectorize_image_to_gdfs(image, meta)
+    # sys.exit("Exiting early for debugging (in write_all)")
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    land_path   = export_gdf(land_gdf,   out_dir / "land.geojson")
-    water_path  = export_gdf(waterb_gdf, out_dir / "waterbodies.geojson")
-    ocean_path  = export_gdf(ocean_gdf,  out_dir / "ocean.geojson")
-    merged_path = export_gdf(merged_gdf, out_dir / "merged_base_geography.geojson")
+    # Vector exports
+    land_path   = export_gdf(land_gdf,   out_dir / configs.LAND_TRACING_EXTRACT_NAME)
+    water_path  = export_gdf(water_gdf, out_dir / configs.WATER_TRACING_EXTRACT_NAME)
+    merged_path = export_gdf(merged_gdf, out_dir / configs.MERGED_TRACING_EXTRACT_NAME)
 
-    land_mask_path, water_mask_path, \
-    terrain_class_path, climate_class_path = make_land_water_masks(
+    # Raster exports: three class rasters using YAML config (base/terrain/climate)
+    cfg_path = meta.get("raster_class_config_path")
+    if cfg_path is None:
+        # default: project_root/config/raster_classifications.yml
+        cfg_path = str((_Path(__file__).resolve().parents[3] / "config" / "raster_classifications.yml").as_posix())
+    try:
+        with open(cfg_path, "r", encoding="utf-8") as f:
+            class_cfg = yaml.safe_load(f) or {}
+    except Exception as e:
+        error(f"Failed to load raster classifications YAML at {cfg_path}: {e}")
+        class_cfg = {}
+
+    world_class_path, terrain_class_path, climate_class_path = make_class_rasters(
         merged_gdf, out_dir,
         width=meta["width"], height=meta["height"],
-        extent=meta["extent"], crs=meta["crs"]
+        extent=meta["extent"], crs=meta["crs"],
+        class_config=class_cfg,
     )
-    # terrain_path = out_dir / land_mask
-    # climate_path = out_dir / "climate_class_map.tif"
-    # if make_rasters:
-        # init_paintable_class_raster_from_land_mask(land_mask, terrain_path, dtype="uint8", nodata=0)
-        # init_paintable_class_raster_from_land_mask(land_mask, climate_path, dtype="uint8", nodata=0)
 
     return {
         "land": str(land_path),
         "waterbodies": str(water_path),
-        "ocean": str(ocean_path),
         "merged": str(merged_path),
+        "world": str(world_class_path),
         "terrain": str(terrain_class_path),
         "climate": str(climate_class_path),
     }
