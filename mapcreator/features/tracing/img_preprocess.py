@@ -246,9 +246,12 @@ def export_centerline_outline(
         _show_step("02 - After Blur", gray, verbose, save=True)
     
     # Adjust contrast
-    gray = cv2.convertScaleAbs(gray, alpha=float(contrast), beta=0)
-    setting_config(f"Contrast alpha={contrast}")
-    _show_step("03 - After Contrast", gray, verbose, save=True)
+    if isinstance(contrast, (int, float)) and contrast != 1.0:
+        gray = cv2.convertScaleAbs(gray, alpha=float(contrast), beta=0)
+        setting_config(f"Contrast alpha={contrast}")
+        _show_step("03 - After Contrast", gray, verbose, save=True)
+    else:
+        setting_config("Contrast: unchanged (1.0)")
 
     # --- Threshold control: Otsu (default) or manual override ---
     threshold_mode = (threshold_mode or "otsu").lower()
@@ -266,23 +269,26 @@ def export_centerline_outline(
         else:
             setting_config(f"Otsu's threshold value: {t_used}")
     _show_step("04 - Threshold (pre-invert)", binimg, verbose, save=True)
+    
     if invert_lines:
         binimg = 255 - binimg
         setting_config("Invert lines: True (strokes become foreground)")
-    _show_step("05 - Threshold (final polarity)", binimg, verbose, save=True)
+        _show_step("05 - Threshold (final polarity)", binimg, verbose, save=True)
 
     mask = _u8_to_bool(binimg)
     if close_ksize and close_ksize >= 3:
         mask = _closing_bool(mask, int(close_ksize))
         setting_config(f"Closing k={close_ksize}")
-    _show_step("06 - After Closing", mask, verbose, save=True)
+        
+        _show_step("06 - After Closing", mask, verbose, save=True)
 
     if min_stroke_pixels and min_stroke_pixels > 0:
         before = int(mask.sum())
         mask = _remove_small_objects_bool(mask, int(min_stroke_pixels))
         after = int(mask.sum())
         setting_config(f"Removed small objects: {max(0, before - after)} pixels")
-    _show_step("07 - After Remove Small Objects", mask, verbose, save=True)
+        
+        _show_step("07 - After Remove Small Objects", mask, verbose, save=True)
 
     skel = _skeletonize_bool(mask)
     _show_step("08 - Skeleton", skel, verbose, save=True)
@@ -300,7 +306,7 @@ def export_centerline_outline(
             u8[endpoints] = 0
         skel = u8 > 0
         setting_config("Pruned short spurs")
-    _show_step("09 - After Spur Prune", skel, verbose, save=True)
+        _show_step("09 - After Spur Prune", skel, verbose, save=True)
 
     out = _bool_to_u8(skel)
     out_path = Path(out_path)
@@ -333,7 +339,7 @@ if __name__ == "__main__":
             gaussian_blur_ksize=0,
             # close_ksize=3,
             close_ksize=0,
-            min_stroke_pixels=16,
+            min_stroke_pixels=3,
             prune_spurs=False,
             threshold_mode="manual",
             manual_threshold=112,
