@@ -177,6 +177,68 @@ def _skeletonize_bool(mask: np.ndarray) -> np.ndarray:
         thin = ximg.thinning((_bool_to_u8(mask)))
         return thin > 0
 
+# --- New helpers: endpoint detection and bridging ---
+def _find_endpoints_u8(skel_u8: np.ndarray) -> np.ndarray:
+    """Return a uint8 mask of endpoints in a 1px skeleton (8-neighborhood).
+    Endpoint has exactly 1 neighbor: 10 (self) + 1 = 11 in the weighted sum trick.
+    """
+    k = np.array([[1,1,1],[1,10,1],[1,1,1]], dtype=np.uint8)
+    nb = cv2.filter2D((skel_u8 > 0).astype(np.uint8), -1, k)
+    return ((nb == 11) & (skel_u8 > 0)).astype(np.uint8)
+
+def _bridge_endpoints(skel: np.ndarray, radius: int = 4, max_links_per_node: int = 1) -> np.ndarray:
+    """Greedily connect nearby skeleton endpoints with 1px lines.
+    - radius: maximum pixel distance to connect
+    - max_links_per_node: how many connections each endpoint may create
+    Returns a boolean skeleton with added links.
+    """
+    if radius <= 0:
+        return skel
+    u8 = (skel.astype(np.uint8) * 255)
+    ep_mask = _find_endpoints_u8(u8)
+    ys, xs = np.where(ep_mask > 0)
+    if len(xs) < 2:
+        return skel
+
+    pts = np.column_stack([xs, ys]).astype(np.int32)
+    used = np.zeros(len(pts), dtype=np.int32)
+
+    # Try KDTree for speed; fall back to naive O(N^2).
+    try:
+        from scipy.spatial import cKDTree  # type: ignore
+        tree = cKDTree(pts)
+        for i, p in enumerate(pts):
+            if used[i] >= max_links_per_node:
+                continue
+            idxs = tree.query_ball_point(p, r=float(radius))
+            idxs = [j for j in idxs if j != i and used[j] < max_links_per_node]
+            if not idxs:
+                continue
+            d2 = ((pts[idxs] - p)**2).sum(axis=1)
+            j = idxs[int(np.argmin(d2))]
+            cv2.line(u8, tuple(p), tuple(pts[j]), 255, 1, lineType=cv2.LINE_8)
+            used[i] += 1
+            used[j] += 1
+    except Exception:
+        # Naive fallback
+        for i in range(len(pts)):
+            if used[i] >= max_links_per_node:
+                continue
+            best_j = -1
+            best_d2 = radius*radius + 1
+            for j in range(len(pts)):
+                if j == i or used[j] >= max_links_per_node:
+                    continue
+                dx = pts[j,0]-pts[i,0]; dy = pts[j,1]-pts[i,1]
+                d2 = dx*dx + dy*dy
+                if d2 <= radius*radius and d2 < best_d2:
+                    best_d2 = d2; best_j = j
+            if best_j >= 0:
+                cv2.line(u8, tuple(pts[i]), tuple(pts[best_j]), 255, 1, lineType=cv2.LINE_8)
+                used[i] += 1; used[best_j] += 1
+
+    return u8 > 0
+
 def export_centerline_outline(
     img_path: Path,
     out_path: Path,
@@ -191,6 +253,10 @@ def export_centerline_outline(
     threshold_mode: str = "otsu",            # 'otsu' | 'manual'
     manual_threshold: int | None = None,      # used when threshold_mode='manual'
     threshold_offset: int = 0,                # add/subtract from Otsu when mode='otsu'
+    pre_dilate_ksize: int = 0,                # 0=disable; try 3
+    pre_dilate_iter: int = 0,                 # 0=disable; try 1
+    bridge_endpoints_radius: int = 0,         # 0=disable; try 4-6
+    bridge_max_links: int = 1,
     verbose: bool = False,
 ) -> Path:
     """Create a 1px centerline outline from a hand-drawn raster and write a PNG.
@@ -276,10 +342,17 @@ def export_centerline_outline(
         _show_step("05 - Threshold (final polarity)", binimg, verbose, save=True)
 
     mask = _u8_to_bool(binimg)
+
+    # Optional: small dilation to seal hairline gaps before closing
+    if isinstance(pre_dilate_ksize, int) and pre_dilate_ksize >= 2 and pre_dilate_iter and pre_dilate_iter > 0:
+        k = cv2.getStructuringElement(cv2.MORPH_RECT, (int(pre_dilate_ksize), int(pre_dilate_ksize)))
+        mask = cv2.dilate(_bool_to_u8(mask), k, iterations=int(pre_dilate_iter)) > 0
+        setting_config(f"Pre-dilate k={pre_dilate_ksize}, iter={pre_dilate_iter}")
+        _show_step("05a - After Pre-Dilate", mask, verbose, save=True)
+    
     if close_ksize and close_ksize >= 3:
         mask = _closing_bool(mask, int(close_ksize))
         setting_config(f"Closing k={close_ksize}")
-        
         _show_step("06 - After Closing", mask, verbose, save=True)
 
     if min_stroke_pixels and min_stroke_pixels > 0:
@@ -292,6 +365,12 @@ def export_centerline_outline(
 
     skel = _skeletonize_bool(mask)
     _show_step("08 - Skeleton", skel, verbose, save=True)
+
+    # Optional: bridge close endpoints on the skeleton to improve connectivity
+    if isinstance(bridge_endpoints_radius, int) and bridge_endpoints_radius > 0:
+        skel = _bridge_endpoints(skel, radius=int(bridge_endpoints_radius), max_links_per_node=int(max(1, bridge_max_links)))
+        setting_config(f"Bridged endpoints within r={bridge_endpoints_radius}, max_links={bridge_max_links}")
+        _show_step("08a - After Bridge Endpoints", skel, verbose, save=True)
     # import sys
     # sys.exit(f"Debug exit after skeletonization")
     if prune_spurs:
@@ -326,7 +405,7 @@ if __name__ == "__main__":
     import os
 
     src = _dirs.RAW_DATA_DIR / "baselandmass_10282025.jpg"
-    dst = _dirs.TEST_DATA_DIR / "test_centerline_outline.png"
+    dst = _dirs.TEST_DATA_DIR / "test_centerline_outline2.png"
 
     info(f"Testing preprocess_image with: {src}")
 
@@ -337,9 +416,12 @@ if __name__ == "__main__":
             contrast=1.0,
             invert_lines=True,   # typical for pencil-on-paper after Otsu
             gaussian_blur_ksize=0,
-            # close_ksize=3,
             close_ksize=0,
-            min_stroke_pixels=3,
+            pre_dilate_ksize=1,
+            pre_dilate_iter=2,
+            bridge_endpoints_radius=8,
+            bridge_max_links=1,
+            min_stroke_pixels=2,
             prune_spurs=False,
             threshold_mode="manual",
             manual_threshold=112,
