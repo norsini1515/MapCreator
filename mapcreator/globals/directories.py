@@ -14,6 +14,11 @@ CONFIG_DIR = BASE_DIR / "config"
 
 # DATA DIRECTORIES ---------------------
 DATA_DIR = BASE_DIR / "data"
+PROCESSED_DATA_DIR = DATA_DIR / "processed"
+TEST_DATA_DIR = PROCESSED_DATA_DIR / "test_data"
+
+RAW_DATA_DIR = DATA_DIR / "raw"
+
 IMAGES_DIR = DATA_DIR / 'images'
 SHAPEFILES_DIR = DATA_DIR / "shapefiles"
 TEMP_FILES_DIR = DATA_DIR / "temp_files"

@@ -1,6 +1,7 @@
 # configs/world1.yml
-#image: C:/Users/nicho/Documents/World Building/map_data/Htrea/images/landamass_drawing_base_contrast.jpg
-image: C:/Users/nicho/Documents/World Building/MapCreator/data/raw/baseland_10212025_1.jpg
+# image: C:/Users/nicho/Documents/World Building/MapCreator/data/raw/landamass_drawing_base.jpg
+image: C:/Users/nicho/Documents/World Building/MapCreator/data/raw/landamass_drawing_base_contrast.jpg
+#image: C:/Users/nicho/Documents/World Building/MapCreator/data/raw/baseland_10212025_1.jpg
 raster_class_config_path: C:/Users/nicho/Documents/World Building/MapCreator/config/raster_classifications.yml
 out_dir: C:/Users/nicho/Documents/World Building/MapCreator/data/processed
 width: 1200
