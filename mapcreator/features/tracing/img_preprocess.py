@@ -2,7 +2,8 @@ import cv2
 import numpy as np
 from pathlib import Path
 
-from mapcreator.globals.logutil import info, process_step, error, setting_config
+from mapcreator.globals.logutil import info, process_step, error, setting_config, success
+from mapcreator import directories as _dirs
 
 # from mapcreator.globals
 def preprocess_image(img_path: Path, *, contrast_factor=2.0, invert=False, flood_fill=False, verbose=False) -> np.ndarray:
@@ -239,6 +240,58 @@ def _bridge_endpoints(skel: np.ndarray, radius: int = 4, max_links_per_node: int
 
     return u8 > 0
 
+def _fill_land_from_outline(
+    outline_bool: np.ndarray,
+    *,
+    dilate_ksize: int = 3,
+    dilate_iter: int = 1,
+    verbose: bool = False,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """
+    From a 1px outline (True == line), produce a filled land mask (True == land).
+    Steps:
+      - Optionally dilate the outline to seal micro-gaps
+      - Compute free space (not barrier)
+      - Flood-fill ocean from image border on free space
+      - Land = free space minus ocean
+    Returns (barrier_used_bool, ocean_bool, land_bool)
+    """
+    # 1) Ensure barriers are solid enough
+    barrier = outline_bool
+    if dilate_ksize and dilate_iter and dilate_ksize >= 2 and dilate_iter > 0:
+        k = cv2.getStructuringElement(cv2.MORPH_RECT, (int(dilate_ksize), int(dilate_ksize)))
+        barrier = cv2.dilate(_bool_to_u8(barrier), k, iterations=int(dilate_iter)) > 0
+
+    _show_step("10a - Barrier For Fill (after dilation)", barrier, verbose, save=True)
+
+    # 2) Free space is everything that's not a barrier
+    free_u8 = np.where(barrier, 0, 255).astype(np.uint8)
+
+    # 3) Flood-fill ocean from image borders (multiple seeds)
+    h, w = free_u8.shape[:2]
+    flood = free_u8.copy()
+
+    def seed_fill(x: int, y: int) -> None:
+        if flood[y, x] != 255:
+            return
+        mask = np.zeros((h + 2, w + 2), np.uint8)
+        cv2.floodFill(flood, mask, (int(x), int(y)), 128)
+
+    seeds = [
+        (0, 0), (w - 1, 0), (0, h - 1), (w - 1, h - 1),
+        (w // 2, 0), (w // 2, h - 1), (0, h // 2), (w - 1, h // 2),
+    ]
+    for x, y in seeds:
+        seed_fill(x, y)
+
+    _show_step("10b - Flooded Ocean (128)", flood, verbose, save=True)
+
+    ocean = flood == 128
+    land = flood == 255
+
+    _show_step("10c - Land Mask (filled)", land, verbose, save=True)
+    return barrier, ocean, land
+
 def export_centerline_outline(
     img_path: Path,
     out_path: Path,
@@ -258,7 +311,7 @@ def export_centerline_outline(
     bridge_endpoints_radius: int = 0,         # 0=disable; try 4-6
     bridge_max_links: int = 1,
     verbose: bool = False,
-) -> Path:
+) -> tuple[Path, np.ndarray]:
     """Create a 1px centerline outline from a hand-drawn raster and write a PNG.
     Parameters
     ----------
@@ -393,26 +446,51 @@ def export_centerline_outline(
     cv2.imwrite(str(out_path), out)
     info(f"Wrote centerline outline: {out_path}")
     if verbose:
-        _show_step("10 - Final Output (saved)", out, verbose, save=True)
+        _show_step("10 - Final Outline (saved)", out, verbose, save=True)
+
+    if verbose:
         cv2.destroyAllWindows()
 
+    return out_path, skel
+
+def fill_outline(
+    skel: np.ndarray,
+    *,
+    out_path: Path,
+    fill_dilate_ksize: int = 3,
+    fill_dilate_iter: int = 1,
+    verbose: bool = False,
+) -> Path:
+    """Fill land from a 1px skeleton outline and write a white-on-black PNG.
+    Returns the output path.
+    """
+    _, _, land_mask = _fill_land_from_outline(
+        skel,
+        dilate_ksize=int(fill_dilate_ksize),
+        dilate_iter=int(fill_dilate_iter),
+        verbose=verbose,
+    )
+    out_path = Path(out_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    cv2.imwrite(str(out_path), _bool_to_u8(land_mask))
+    info(f"Wrote filled land mask: {out_path}")
+    if verbose:
+        _show_step("10d - Final Land (saved)", land_mask, verbose, save=True)
     return out_path
 
-
 if __name__ == "__main__":
-    # Also export a 1px centerline outline using the same test image
-    from mapcreator import directories as _dirs
     import os
 
     src = _dirs.RAW_DATA_DIR / "baselandmass_10282025.jpg"
-    dst = _dirs.TEST_DATA_DIR / "test_centerline_outline2.png"
+    outline_png = _dirs.TEST_DATA_DIR / "test_centerline_outline.png"
+    filled_png = _dirs.TEST_DATA_DIR / "test_centerline_outline_filled.png"
 
     info(f"Testing preprocess_image with: {src}")
 
     try:
-        outdir = export_centerline_outline(
+        outdir, outline = export_centerline_outline(
             img_path=src,
-            out_path=dst,
+            out_path=outline_png,
             contrast=1.0,
             invert_lines=True,   # typical for pencil-on-paper after Otsu
             gaussian_blur_ksize=0,
@@ -425,13 +503,29 @@ if __name__ == "__main__":
             prune_spurs=False,
             threshold_mode="manual",
             manual_threshold=112,
-            verbose=True, # show intermediate steps
+            verbose=False, # show intermediate steps
         )
-        print(f"Wrote centerline outline: {dst}")
+        success(f"Wrote centerline outline: {outline_png}")
     except Exception as e:
-        print(f"Centerline export failed: {e}")
-
+        error(f"Centerline export failed: {e}")
+    # Fill land from the produced outline skeleton
     try:
-        os.startfile(str(outdir))
-    except Exception:
-        pass
+        filled_path = fill_outline(
+            outline,
+            out_path=filled_png,
+            fill_dilate_ksize=1,
+            fill_dilate_iter=2,
+            verbose=True,
+        )
+        print(f"Wrote filled land mask: {filled_path}")
+        try:
+            os.startfile(str(filled_path))
+        except Exception:
+            pass
+    except Exception as e:
+        print(f"Fill from outline failed: {e}")
+
+
+
+
+    
