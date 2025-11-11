@@ -5,7 +5,40 @@ from pathlib import Path
 from mapcreator.globals.logutil import info, process_step, error, setting_config, success
 from mapcreator import directories as _dirs
 
-# from mapcreator.globals
+# -------------------------
+# Image preprocessing to binary mask
+# -------------------------
+def write_image(path: Path | str, image: np.ndarray, *, make_parents: bool = True, log: bool = True, message: str | None = None) -> Path:
+    """Write an image to disk with directory creation and optional logging.
+
+    Parameters
+    ----------
+    path : Path | str
+        Destination path for the image.
+    image : np.ndarray
+        Image data to write (expects uint8 or a valid OpenCV-encodable array).
+    make_parents : bool, optional
+        Create parent directories if missing, by default True.
+    log : bool, optional
+        Emit an info log after write, by default True.
+    message : str | None, optional
+        Custom message prefix for the log; if None, a generic message is used.
+
+    Returns
+    -------
+    Path
+        The resolved output path written to.
+    """
+    p = Path(path)
+    if make_parents:
+        p.parent.mkdir(parents=True, exist_ok=True)
+    ok = cv2.imwrite(str(p), image)
+    if not ok:
+        raise IOError(f"Failed to write image: {p}")
+    if log:
+        info(f"{message or 'Wrote image'}: {p}")
+    return p
+
 def preprocess_image(img_path: Path, *, contrast_factor=2.0, invert=False, flood_fill=False, verbose=False) -> np.ndarray:
     """Load and preprocess image to binary mask.
     Steps:
@@ -108,7 +141,7 @@ def _show_step(title: str, img: np.ndarray, verbose: bool, *, save: bool = False
             out_dir = _dirs.TEST_DATA_DIR
             out_dir.mkdir(parents=True, exist_ok=True)
             fname = re.sub(r"[^A-Za-z0-9._-]+", "_", title.strip()) + ".png"
-            cv2.imwrite(str(out_dir / fname), _to_u8_for_display(img))
+            write_image(out_dir / fname, _to_u8_for_display(img), log=False)
         except Exception as _e:
             # Non-fatal: continue to display even if save fails
             pass
@@ -292,9 +325,8 @@ def _fill_land_from_outline(
     _show_step("10c - Land Mask (filled)", land, verbose, save=True)
     return barrier, ocean, land
 
-def export_centerline_outline(
+def centerline_outline(
     img_path: Path,
-    out_path: Path,
     *,
     contrast: float = 2.0,
     invert_lines: bool = True,
@@ -311,14 +343,12 @@ def export_centerline_outline(
     bridge_endpoints_radius: int = 0,         # 0=disable; try 4-6
     bridge_max_links: int = 1,
     verbose: bool = False,
-) -> tuple[Path, np.ndarray]:
-    """Create a 1px centerline outline from a hand-drawn raster and write a PNG.
+) -> tuple[np.ndarray, np.ndarray]:
+    """Create a 1px centerline outline from a hand-drawn raster and return the image data.
     Parameters
     ----------
     img_path : Path
         Path to input image file.
-    out_path : Path
-        Path to output PNG file.
     contrast : float
         Contrast scaling factor (alpha) for cv2.convertScaleAbs.
         Set to 1 to leave unchanged.
@@ -339,8 +369,8 @@ def export_centerline_outline(
     
     Returns
     -------
-    Path
-        Path to output PNG file.
+    (np.ndarray, np.ndarray)
+        Tuple of (outline_u8, skeleton_bool)
 
     Steps:
       - optional blur, contrast boost
@@ -441,56 +471,49 @@ def export_centerline_outline(
         _show_step("09 - After Spur Prune", skel, verbose, save=True)
 
     out = _bool_to_u8(skel)
-    out_path = Path(out_path)
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    cv2.imwrite(str(out_path), out)
-    info(f"Wrote centerline outline: {out_path}")
     if verbose:
-        _show_step("10 - Final Outline (saved)", out, verbose, save=True)
+        _show_step("10 - Final Outline (computed)", out, verbose, save=True)
 
     if verbose:
         cv2.destroyAllWindows()
 
-    return out_path, skel
+    return out, skel
 
-def fill_outline(
+
+def fill_outline_mask(
     skel: np.ndarray,
     *,
-    out_path: Path,
     fill_dilate_ksize: int = 3,
     fill_dilate_iter: int = 1,
     verbose: bool = False,
-) -> Path:
-    """Fill land from a 1px skeleton outline and write a white-on-black PNG.
-    Returns the output path.
-    """
+) -> np.ndarray:
+    """Fill land from a 1px skeleton outline and return the boolean mask."""
     _, _, land_mask = _fill_land_from_outline(
         skel,
         dilate_ksize=int(fill_dilate_ksize),
         dilate_iter=int(fill_dilate_iter),
         verbose=verbose,
     )
-    out_path = Path(out_path)
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    cv2.imwrite(str(out_path), _bool_to_u8(land_mask))
-    info(f"Wrote filled land mask: {out_path}")
     if verbose:
-        _show_step("10d - Final Land (saved)", land_mask, verbose, save=True)
-    return out_path
+        _show_step("10d - Final Land (computed)", land_mask, verbose, save=True)
+    return land_mask
 
-if __name__ == "__main__":
-    import os
+    
 
-    src = _dirs.RAW_DATA_DIR / "baselandmass_10282025.jpg"
-    outline_png = _dirs.TEST_DATA_DIR / "test_centerline_outline.png"
-    filled_png = _dirs.TEST_DATA_DIR / "test_centerline_outline_filled.png"
+def process_image(
+        src_path: Path,
+        out_path: Path,
+):
+    """Process a drawn map image into a centerline outline and write it.
 
-    info(f"Testing preprocess_image with: {src}")
+    Returns when the outline PNG has been written. Writing of additional
+    artifacts (e.g., filled land) should be handled by the caller.
+    """
+    process_step("Process drawn map image")
 
     try:
-        outdir, outline = export_centerline_outline(
-            img_path=src,
-            out_path=outline_png,
+        outline_u8, outline = centerline_outline(
+            img_path=src_path,
             contrast=1.0,
             invert_lines=True,   # typical for pencil-on-paper after Otsu
             gaussian_blur_ksize=0,
@@ -505,19 +528,53 @@ if __name__ == "__main__":
             manual_threshold=112,
             verbose=False, # show intermediate steps
         )
-        success(f"Wrote centerline outline: {outline_png}")
+        write_image(out_path, outline_u8, message="Wrote centerline outline")
+        success(f"Wrote centerline outline: {out_path}")
+        return out_path, outline
     except Exception as e:
         error(f"Centerline export failed: {e}")
+        raise
+
+if __name__ == "__main__":
+    import os
+
+    src = _dirs.RAW_DATA_DIR / "baselandmass_10282025.jpg"
+    outline_png = _dirs.TEST_DATA_DIR / "test_centerline_outline.png"
+    filled_png = _dirs.TEST_DATA_DIR / "test_centerline_outline_filled.png"
+
+    info(f"Testing preprocess_image with: {src}")
+
+    try:
+        outline_u8, outline = centerline_outline(
+            img_path=src,
+            contrast=1.0,
+            invert_lines=True,   # typical for pencil-on-paper after Otsu
+            gaussian_blur_ksize=0,
+            close_ksize=0,
+            pre_dilate_ksize=1,
+            pre_dilate_iter=2,
+            bridge_endpoints_radius=8,
+            bridge_max_links=1,
+            min_stroke_pixels=2,
+            prune_spurs=False,
+            threshold_mode="manual",
+            manual_threshold=112,
+            verbose=False, # show intermediate steps
+        )
+        write_image(outline_png, outline_u8, message="Wrote centerline outline")
+        success(f"Wrote centerline outline: {outline_png}")
+    except Exception as e:
+        error(f"Centerline outline computation failed: {e}")
     # Fill land from the produced outline skeleton
     try:
-        filled_path = fill_outline(
+        land_mask = fill_outline_mask(
             outline,
-            out_path=filled_png,
             fill_dilate_ksize=1,
             fill_dilate_iter=2,
             verbose=True,
         )
-        print(f"Wrote filled land mask: {filled_path}")
+        filled_path = write_image(filled_png, _bool_to_u8(land_mask), message="Wrote filled land mask")
+        success(f"Wrote filled land mask: {filled_path}")
         try:
             os.startfile(str(filled_path))
         except Exception:

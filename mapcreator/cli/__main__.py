@@ -46,6 +46,55 @@ def _resolve_log_path() -> Path:
     base.mkdir(parents=True, exist_ok=True)
     return base / f"{LOG_FILE_NAME}{datetime.now():%Y%m%d_%H%M%S}.log"
 
+# --- Helper: unified config loading ---
+def load_config(cfg: Dict[str, Any], **cli_values) -> Dict[str, Any]:
+    """Build the unified configuration metadata dict.
+
+    This mirrors the logic previously embedded in ``extract_all`` so other
+    commands can reuse it. Precedence currently matches existing behavior:
+    if a key exists in the YAML it overrides the CLI value; otherwise the
+    CLI value (or fallback default) is used.
+
+    Parameters
+    ----------
+    cfg : Dict[str, Any]
+        Parsed YAML configuration (may be empty).
+    **cli_values : Any
+        Keyword arguments representing CLI-provided values. Expected keys:
+        verbose, image, out_dir, width, height, xmin, ymin, xmax, ymax, crs,
+        invert, flood_fill, contrast, min_area, min_points, log_file.
+
+    Returns
+    -------
+    Dict[str, Any]
+        Normalized configuration dictionary used by processing pipelines.
+    """
+    def pick(key: str, cli_val):
+        config_val = cfg.get(key)
+        return config_val if config_val is not None else cli_val
+
+    meta = {
+        "log_file": pick("log_file", cli_values.get("log_file")),
+        "verbose": pick("verbose", cli_values.get("verbose")) or False,
+        "image": pick("image", cli_values.get("image")) or None,
+        "out_dir": pick("out_dir", cli_values.get("out_dir")) or None,
+        "width": pick("width", cli_values.get("width")) or 1000,
+        "height": pick("height", cli_values.get("height")) or 1000,
+        "extent": dict(
+            xmin=pick("xmin", cli_values.get("xmin")) or 0.0,
+            ymin=pick("ymin", cli_values.get("ymin")) or 0.0,
+            xmax=pick("xmax", cli_values.get("xmax")) or 3500.0,
+            ymax=pick("ymax", cli_values.get("ymax")) or 3500.0,
+        ),
+        "crs": pick("crs", cli_values.get("crs")) or "EPSG:3857",
+        "invert": pick("invert", cli_values.get("invert")) or False,
+        "flood_fill": pick("flood_fill", cli_values.get("flood_fill")) or False,
+        "contrast": pick("contrast", cli_values.get("contrast")) or 2.0,
+        "min_area": pick("min_area", cli_values.get("min_area")) or 5.0,
+        "min_points": pick("min_points", cli_values.get("min_points")) or 3,
+    }
+    return meta
+
 # --- SUBCOMMAND ---
 @app.command("extract-all")
 def extract_all(
@@ -100,40 +149,32 @@ def extract_all(
     logger = Logger(logfile_path=log_path)
     # load configurations
     cfg = _load_yaml(config)
-    print("Using config file:", cfg)
-    print(_pick(cfg, "verbose", verbose))
-
-    meta = {
-        "log_file": log_path,
-        "verbose": _pick(cfg, "verbose", verbose) or False,
-        "image": _pick(cfg, "image", image) or None,
-        "out_dir": _pick(cfg, "out_dir", out_dir) or None,
-        
-        "width": _pick(cfg, "width", width) or 1000,
-        "height": _pick(cfg, "height", height) or 1000,
-        "extent": dict(
-            xmin=_pick(cfg, "xmin", xmin) or 0.0,
-            ymin=_pick(cfg, "ymin", ymin) or 0.0,
-            xmax=_pick(cfg, "xmax", xmax) or 3500.0,
-            ymax=_pick(cfg, "ymax", ymax) or 3500.0,
-        ),
-
-        "crs": _pick(cfg, "crs", crs) or "EPSG:3857",
-        
-        "invert": _pick(cfg, "invert", invert) or False,
-        "flood_fill": _pick(cfg, "flood_fill", flood_fill) or False,
-
-        "contrast": _pick(cfg, "contrast", contrast) or 2.0,
-        "min_area": _pick(cfg, "min_area", min_area) or 5.0,
-        "min_points": _pick(cfg, "min_points", min_points) or 3,
-    }
-    # if meta["verbose"]:
-    setting_config("Verbose logging enabled")
+    meta = load_config(
+        cfg,
+        log_file=log_path,
+        verbose=verbose,
+        image=image,
+        out_dir=out_dir,
+        width=width,
+        height=height,
+        xmin=xmin,
+        ymin=ymin,
+        xmax=xmax,
+        ymax=ymax,
+        crs=crs,
+        invert=invert,
+        flood_fill=flood_fill,
+        contrast=contrast,
+        min_area=min_area,
+        min_points=min_points,
+    )
+    info("Resolved configuration:")
     for k, v in meta.items():
         setting_config(f"  {k}: {v}")
 
-    img = Path(_pick(cfg, "image", image))
-    out = Path(_pick(cfg, "out_dir", out_dir))
+    # Resolve image and out dir from meta (already merged)
+    img = Path(meta["image"]) if meta["image"] else None
+    out = Path(meta["out_dir"]) if meta["out_dir"] else None
 
     if dry_run:
         info("Resolved configuration:")
@@ -156,6 +197,20 @@ def extract_all(
 def test():
     success("Test command executed successfully!")
 
+@app.command("image-extract")
+def image_extract(
+    # I/O
+    config: Optional[Path] = typer.Option(
+        DEFAULT_CONFIG_FILE_PATH, "--config", "-c",
+        help="YAML file with parameters. Flags override YAML.",
+        rich_help_panel="I/O"
+    ),
+):
+    """turn a hand drawn map into a black and white outline image ready for further processing or easy manipulation"""
+    
+    
+    
+    success("Image extract command executed successfully!")
 def main():
     app()
 
