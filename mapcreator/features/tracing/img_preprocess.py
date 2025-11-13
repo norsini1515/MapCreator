@@ -36,7 +36,7 @@ def write_image(path: Path | str, image: np.ndarray, *, make_parents: bool = Tru
     if not ok:
         raise IOError(f"Failed to write image: {p}")
     if log:
-        info(f"{message or 'Wrote image'}: {p}")
+        success(f"{message or 'Wrote image'}: {p}")
     return p
 
 def preprocess_image(img_path: Path, *, contrast_factor=2.0, invert=False, flood_fill=False, verbose=False) -> np.ndarray:
@@ -503,37 +503,76 @@ def fill_outline_mask(
 def process_image(
         src_path: Path,
         out_path: Path,
+        *,
+        # Outline parameters (previously hardcoded defaults)
+        contrast: float = 1.0,
+        invert_lines: bool = True,
+        gaussian_blur_ksize: int = 0,
+        close_ksize: int = 0,
+        pre_dilate_ksize: int = 1,
+        pre_dilate_iter: int = 2,
+        bridge_endpoints_radius: int = 8,
+        bridge_max_links: int = 1,
+        min_stroke_pixels: int = 2,
+        prune_spurs: bool = False,
+        spur_iterations: int = 6,
+        threshold_mode: str = "manual",
+        manual_threshold: int | None = 112,
+        threshold_offset: int = 0,
+        verbose: bool = False,
+        # Fill parameters
+        fill_dilate_ksize: int = 1,
+        fill_dilate_iter: int = 2,
 ):
-    """Process a drawn map image into a centerline outline and write it.
+    """Process a drawn map image into a centerline outline and filled land.
 
-    Returns when the outline PNG has been written. Writing of additional
-    artifacts (e.g., filled land) should be handled by the caller.
+    Parameters mirror those of `centerline_outline` and `fill_outline_mask` so
+    callers can adjust behavior without editing code.
     """
     process_step("Process drawn map image")
 
     try:
         outline_u8, outline = centerline_outline(
             img_path=src_path,
-            contrast=1.0,
-            invert_lines=True,   # typical for pencil-on-paper after Otsu
-            gaussian_blur_ksize=0,
-            close_ksize=0,
-            pre_dilate_ksize=1,
-            pre_dilate_iter=2,
-            bridge_endpoints_radius=8,
-            bridge_max_links=1,
-            min_stroke_pixels=2,
-            prune_spurs=False,
-            threshold_mode="manual",
-            manual_threshold=112,
-            verbose=False, # show intermediate steps
+            contrast=contrast,
+            invert_lines=invert_lines,   # typical for pencil-on-paper after Otsu
+            gaussian_blur_ksize=gaussian_blur_ksize,
+            close_ksize=close_ksize,
+            pre_dilate_ksize=pre_dilate_ksize,
+            pre_dilate_iter=pre_dilate_iter,
+            bridge_endpoints_radius=bridge_endpoints_radius,
+            bridge_max_links=bridge_max_links,
+            min_stroke_pixels=min_stroke_pixels,
+            prune_spurs=prune_spurs,
+            spur_iterations=spur_iterations,
+            threshold_mode=threshold_mode,
+            manual_threshold=manual_threshold,
+            threshold_offset=threshold_offset,
+            verbose=verbose, # show intermediate steps
         )
         write_image(out_path, outline_u8, message="Wrote centerline outline")
-        success(f"Wrote centerline outline: {out_path}")
-        return out_path, outline
+        
     except Exception as e:
         error(f"Centerline export failed: {e}")
         raise
+
+    #now fill land from the produced outline skeleton
+    try:
+        land_mask = fill_outline_mask(
+            outline,
+            fill_dilate_ksize=fill_dilate_ksize,
+            fill_dilate_iter=fill_dilate_iter,
+            verbose=verbose,
+        )
+        filled_out = out_path.with_name(out_path.stem + "_filled.png")
+        print(f"Filled output path: {filled_out}")
+        filled_path = write_image(filled_out, _bool_to_u8(land_mask), message="Wrote filled land mask")
+        success(f"Wrote filled land mask: {filled_path}")
+    except Exception as e:
+        error(f"Fill from outline failed: {e}")
+        raise
+
+    return land_mask, filled_path
 
 if __name__ == "__main__":
     import os
@@ -544,43 +583,12 @@ if __name__ == "__main__":
 
     info(f"Testing preprocess_image with: {src}")
 
+    land_mask, filled_path = process_image(src, outline_png, verbose=False)
+    
     try:
-        outline_u8, outline = centerline_outline(
-            img_path=src,
-            contrast=1.0,
-            invert_lines=True,   # typical for pencil-on-paper after Otsu
-            gaussian_blur_ksize=0,
-            close_ksize=0,
-            pre_dilate_ksize=1,
-            pre_dilate_iter=2,
-            bridge_endpoints_radius=8,
-            bridge_max_links=1,
-            min_stroke_pixels=2,
-            prune_spurs=False,
-            threshold_mode="manual",
-            manual_threshold=112,
-            verbose=False, # show intermediate steps
-        )
-        write_image(outline_png, outline_u8, message="Wrote centerline outline")
-        success(f"Wrote centerline outline: {outline_png}")
+        os.startfile(str(filled_path))
     except Exception as e:
-        error(f"Centerline outline computation failed: {e}")
-    # Fill land from the produced outline skeleton
-    try:
-        land_mask = fill_outline_mask(
-            outline,
-            fill_dilate_ksize=1,
-            fill_dilate_iter=2,
-            verbose=True,
-        )
-        filled_path = write_image(filled_png, _bool_to_u8(land_mask), message="Wrote filled land mask")
-        success(f"Wrote filled land mask: {filled_path}")
-        try:
-            os.startfile(str(filled_path))
-        except Exception:
-            pass
-    except Exception as e:
-        print(f"Fill from outline failed: {e}")
+        error(f"Failed to open filled image: {e}")
 
 
 
