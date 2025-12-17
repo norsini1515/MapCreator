@@ -30,6 +30,8 @@ def write_image(path: Path | str, image: np.ndarray, *, make_parents: bool = Tru
         The resolved output path written to.
     """
     p = Path(path)
+    if log:
+        info(f"Writing to: {p}")
     if make_parents:
         p.parent.mkdir(parents=True, exist_ok=True)
     ok = cv2.imwrite(str(p), image)
@@ -310,6 +312,7 @@ def _fill_land_from_outline(
         mask = np.zeros((h + 2, w + 2), np.uint8)
         cv2.floodFill(flood, mask, (int(x), int(y)), 128)
 
+    # Seed points along the edges and corners
     seeds = [
         (0, 0), (w - 1, 0), (0, h - 1), (w - 1, h - 1),
         (w // 2, 0), (w // 2, h - 1), (0, h // 2), (w - 1, h // 2),
@@ -479,7 +482,6 @@ def centerline_outline(
 
     return out, skel
 
-
 def fill_outline_mask(
     skel: np.ndarray,
     *,
@@ -497,8 +499,6 @@ def fill_outline_mask(
     if verbose:
         _show_step("10d - Final Land (computed)", land_mask, verbose, save=True)
     return land_mask
-
-    
 
 def process_image(
         src_path: Path,
@@ -528,6 +528,13 @@ def process_image(
 
     Parameters mirror those of `centerline_outline` and `fill_outline_mask` so
     callers can adjust behavior without editing code.
+
+    Returns
+    -------
+    land_mask : np.ndarray
+        Boolean mask of filled land areas.
+    filled_path : Path
+        Path to the written filled land mask image.
     """
     process_step("Process drawn map image")
 
@@ -565,9 +572,7 @@ def process_image(
             verbose=verbose,
         )
         filled_out = out_path.with_name(out_path.stem + "_filled.png")
-        print(f"Filled output path: {filled_out}")
         filled_path = write_image(filled_out, _bool_to_u8(land_mask), message="Wrote filled land mask")
-        success(f"Wrote filled land mask: {filled_path}")
     except Exception as e:
         error(f"Fill from outline failed: {e}")
         raise
@@ -581,9 +586,9 @@ if __name__ == "__main__":
     outline_png = _dirs.TEST_DATA_DIR / "test_centerline_outline.png"
     filled_png = _dirs.TEST_DATA_DIR / "test_centerline_outline_filled.png"
 
-    info(f"Testing preprocess_image with: {src}")
+    info(f"Testing process_image with: {src}")
 
-    land_mask, filled_path = process_image(src, outline_png, verbose=False)
+    land_mask, filled_path = process_image(src_path=src, out_path=outline_png, verbose=False)
     
     try:
         os.startfile(str(filled_path))
