@@ -1,7 +1,8 @@
+import re
 import cv2
 import numpy as np
 from pathlib import Path
-
+\
 from mapcreator.globals.logutil import info, process_step, error, setting_config, success
 from mapcreator import directories as _dirs
 
@@ -125,7 +126,7 @@ def _to_u8_for_display(arr: np.ndarray) -> np.ndarray:
         return np.clip(arr, 0, 255).astype(np.uint8)
     return arr
 
-def _show_step(title: str, img: np.ndarray, verbose: bool, *, save: bool = False, max_w: int = 1280, max_h: int = 900, wait_ms: int = 0) -> None:
+def _show_step(title: str, img: np.ndarray, verbose: bool, *, save: bool = False, max_w: int = 1280, max_h: int = 900, wait_ms: int = 0, out_dir: Path = _dirs.TEST_DATA_DIR) -> None:
     """Show an image scaled to fit on screen using a resizable window and optionally save the step.
     Set wait_ms=0 to wait for a key; >0 waits that many milliseconds.
     If save=True, writes a PNG of the original-sized (non-resized) image to data/processed/test_data.
@@ -138,8 +139,6 @@ def _show_step(title: str, img: np.ndarray, verbose: bool, *, save: bool = False
     # Optional save of original-scale frame
     if save:
         try:
-            from mapcreator import directories as _dirs
-            import re
             out_dir = _dirs.TEST_DATA_DIR
             out_dir.mkdir(parents=True, exist_ok=True)
             fname = re.sub(r"[^A-Za-z0-9._-]+", "_", title.strip()) + ".png"
@@ -213,7 +212,6 @@ def _skeletonize_bool(mask: np.ndarray) -> np.ndarray:
         thin = ximg.thinning((_bool_to_u8(mask)))
         return thin > 0
 
-# --- New helpers: endpoint detection and bridging ---
 def _find_endpoints_u8(skel_u8: np.ndarray) -> np.ndarray:
     """Return a uint8 mask of endpoints in a 1px skeleton (8-neighborhood).
     Endpoint has exactly 1 neighbor: 10 (self) + 1 = 11 in the weighted sum trick.
@@ -328,7 +326,7 @@ def _fill_land_from_outline(
     _show_step("10c - Land Mask (filled)", land, verbose, save=True)
     return barrier, ocean, land
 
-def centerline_outline(
+def trace_centerline_from_file(
     img_path: Path,
     *,
     contrast: float = 2.0,
@@ -526,7 +524,7 @@ def process_image(
 ):
     """Process a drawn map image into a centerline outline and filled land.
 
-    Parameters mirror those of `centerline_outline` and `fill_outline_mask` so
+    Parameters mirror those of `trace_centerline_from_file` and `fill_outline_mask` so
     callers can adjust behavior without editing code.
 
     Returns
@@ -536,10 +534,10 @@ def process_image(
     filled_path : Path
         Path to the written filled land mask image.
     """
-    process_step("Process drawn map image")
+    process_step("Process drawn map image to outline and filled land arrays")
 
     try:
-        outline_u8, outline = centerline_outline(
+        outline_u8, outline = trace_centerline_from_file(
             img_path=src_path,
             contrast=contrast,
             invert_lines=invert_lines,   # typical for pencil-on-paper after Otsu
@@ -583,8 +581,8 @@ if __name__ == "__main__":
     import os
 
     src = _dirs.RAW_DATA_DIR / "baselandmass_10282025.jpg"
-    outline_png = _dirs.TEST_DATA_DIR / "test_centerline_outline.png"
-    filled_png = _dirs.TEST_DATA_DIR / "test_centerline_outline_filled.png"
+    outline_png = _dirs.TEST_DATA_DIR / "test_centerline_outline_1.png"
+    # filled_png = _dirs.TEST_DATA_DIR / "test_centerline_outline_filled.png"
 
     info(f"Testing process_image with: {src}")
 
