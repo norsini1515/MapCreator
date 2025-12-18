@@ -2,14 +2,57 @@ import re
 import cv2
 import numpy as np
 from pathlib import Path
-\
-from mapcreator.globals.logutil import info, process_step, error, setting_config, success
+import os
+
+from mapcreator.globals.logutil import info, process_step, error, setting_config, success, warn
 from mapcreator import directories as _dirs
 
 # -------------------------
 # Image preprocessing to binary mask
 # -------------------------
-def write_image(path: Path | str, image: np.ndarray, *, make_parents: bool = True, log: bool = True, message: str | None = None) -> Path:
+def _is_binary_image(img: np.ndarray, *, tol: int = 3, mid_fraction_max: float = 0.005) -> bool:
+    """Heuristically determine if an image is (near-)binary.
+
+    Rules (any satisfied returns True):
+    - Unique values are contained within two bands near 0 and 255 (within ``tol``).
+    - Fraction of mid-tone pixels (``tol < v < 255-tol``) is less than ``mid_fraction_max``.
+
+    This accepts common "almost binary" cases like {0,1,254,255}.
+    """
+    if img is None:
+        return False
+    # Ensure uint8 view for comparisons
+    if img.dtype != np.uint8:
+        arr = np.clip(img, 0, 255).astype(np.uint8)
+    else:
+        arr = img
+
+    vals = np.unique(arr)
+    info(f"Unique values in image for binary check: {vals}")
+    if vals.size == 0:
+        return False
+
+    # 1) All unique values fall within low/high bands
+    low_band = vals <= tol
+    high_band = vals >= (255 - tol)
+    if np.all(low_band | high_band):
+        return True
+
+    # 2) Allow tiny proportion of mid-tones as noise/anti-aliasing
+    mid = (arr > tol) & (arr < (255 - tol))
+    mid_frac = float(mid.mean())
+    setting_config(f"Near-binary check: tol={tol}, mid-tone fraction={mid_frac:.6f}")
+    return mid_frac <= float(mid_fraction_max)
+
+def write_image(
+    path: Path | str,
+    image: np.ndarray,
+    *,
+    make_parents: bool = True,
+    log: bool = True,
+    message: str | None = None,
+    overwrite: bool = True,
+) -> Path:
     """Write an image to disk with directory creation and optional logging.
 
     Parameters
@@ -31,15 +74,27 @@ def write_image(path: Path | str, image: np.ndarray, *, make_parents: bool = Tru
         The resolved output path written to.
     """
     p = Path(path)
-    if log:
-        info(f"Writing to: {p}")
     if make_parents:
         p.parent.mkdir(parents=True, exist_ok=True)
-    ok = cv2.imwrite(str(p), image)
-    if not ok:
-        raise IOError(f"Failed to write image: {p}")
+
+    # Normalize dtype to uint8 so callers can pass bool or float arrays safely
+    img_u8 = _to_u8_for_display(image)
+    if img_u8 is None:
+        raise ValueError(f"write_image received None for: {p}")
+
+    # Optionally remove existing file to avoid odd caching behaviors
+    if overwrite and p.exists():
+        warn(f"Overwriting existing image: {p.resolve()}")
+        #delete the existing file
+        p.unlink()
+        assert not p.exists(), f"unlink failed; file still exists: {p}"
+
+    ok = cv2.imwrite(p, img_u8)
+
+    if not ok or not p.exists():
+        raise IOError(f"Failed to write image: {p.resolve()}")
     if log:
-        success(f"{message or 'Wrote image'}: {p}")
+        success(f"{message or 'Wrote image'}: {p.resolve()}")
     return p
 
 def preprocess_image(img_path: Path, *, contrast_factor=2.0, invert=False, flood_fill=False, verbose=False) -> np.ndarray:
@@ -536,6 +591,20 @@ def process_image(
     """
     process_step("Process drawn map image to outline and filled land arrays")
 
+    # Fast path: if src image is already binary (white land, black ocean),
+    # skip centerline tracing and treat it as the filled land mask.
+    try:
+        _gray_probe = cv2.imread(str(src_path), cv2.IMREAD_GRAYSCALE)
+    except Exception:
+        _gray_probe = None
+    print(f"Probe image shape: {_gray_probe.shape if _gray_probe is not None else 'None'}")
+    if _gray_probe is not None and _is_binary_image(_gray_probe):
+        setting_config("Detected binary source image (0/255); skipping outline pipeline")
+        land_mask = (_gray_probe > 127)
+        filled_out = out_path.with_name(out_path.stem + "_filled.png")
+        filled_path = write_image(filled_out, _bool_to_u8(land_mask), message="Saved binary land mask as-is")
+        return land_mask, filled_path
+
     try:
         outline_u8, outline = trace_centerline_from_file(
             img_path=src_path,
@@ -579,9 +648,12 @@ def process_image(
 
 if __name__ == "__main__":
     import os
-
+    import datetime
+    timstamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    timstamp = ""
     src = _dirs.RAW_DATA_DIR / "baselandmass_10282025.jpg"
-    outline_png = _dirs.TEST_DATA_DIR / "test_centerline_outline_1.png"
+    # src = _dirs.RAW_DATA_DIR / "baseland_12182025_1.jpg"
+    outline_png = _dirs.TEST_DATA_DIR / f"test_centerline_outline_{timstamp}.png"
     # filled_png = _dirs.TEST_DATA_DIR / "test_centerline_outline_filled.png"
 
     info(f"Testing process_image with: {src}")
