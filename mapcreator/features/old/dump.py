@@ -12,7 +12,10 @@ ymin: 0
 xmax: 3800
 ymax: 3800
 crs: EPSG:3857
+# invert: false
+# flood_fill: false
+# contrast: 2.0
 min_area: 5.0
 min_points: 3
-log_file_name: "extract_all_{now:%Y-%m-%d_%H-%M-%S}"
+log_file_name: "extract_all_{now:%Y-%m-%d_%H-%M-%S}.log"
 verbose: True

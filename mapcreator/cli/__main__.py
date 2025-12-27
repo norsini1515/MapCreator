@@ -78,8 +78,8 @@ def load_config(cfg: Dict[str, Any], **cli_values) -> Dict[str, Any]:
         "verbose": pick("verbose", cli_values.get("verbose")) or False,
         "image": pick("image", cli_values.get("image")) or None,
         "out_dir": pick("out_dir", cli_values.get("out_dir")) or None,
-        "width": pick("width", cli_values.get("width")) or 1000,
-        "height": pick("height", cli_values.get("height")) or 1000,
+        # "width": pick("width", cli_values.get("width")) or 1000,
+        # "height": pick("height", cli_values.get("height")) or 1000,
         "extent": dict(
             xmin=pick("xmin", cli_values.get("xmin")) or 0.0,
             ymin=pick("ymin", cli_values.get("ymin")) or 0.0,
@@ -87,9 +87,9 @@ def load_config(cfg: Dict[str, Any], **cli_values) -> Dict[str, Any]:
             ymax=pick("ymax", cli_values.get("ymax")) or 3500.0,
         ),
         "crs": pick("crs", cli_values.get("crs")) or "EPSG:3857",
-        "invert": pick("invert", cli_values.get("invert")) or False,
-        "flood_fill": pick("flood_fill", cli_values.get("flood_fill")) or False,
-        "contrast": pick("contrast", cli_values.get("contrast")) or 2.0,
+        # "invert": pick("invert", cli_values.get("invert")) or False,
+        # "flood_fill": pick("flood_fill", cli_values.get("flood_fill")) or False,
+        # "contrast": pick("contrast", cli_values.get("contrast")) or 2.0,
         "min_area": pick("min_area", cli_values.get("min_area")) or 5.0,
         "min_points": pick("min_points", cli_values.get("min_points")) or 3,
     }
@@ -115,17 +115,15 @@ def extract_all(
         rich_help_panel="I/O"
     ),
     # World grid / extent
-    width: Optional[int] = typer.Option(None, "--width", help="Grid width (px)", rich_help_panel="World grid"),
-    height: Optional[int] = typer.Option(None, "--height", help="Grid height (px)", rich_help_panel="World grid"),
     xmin: Optional[float] = typer.Option(None, "--xmin", help="Extent min X", rich_help_panel="World grid"),
     ymin: Optional[float] = typer.Option(None, "--ymin", help="Extent min Y", rich_help_panel="World grid"),
     xmax: Optional[float] = typer.Option(None, "--xmax", help="Extent max X", rich_help_panel="World grid"),
     ymax: Optional[float] = typer.Option(None, "--ymax", help="Extent max Y", rich_help_panel="World grid"),
     crs:  Optional[str]  = typer.Option(None, "--crs",  help="Output CRS (e.g., 'EPSG:3857')", rich_help_panel="World grid"),
     # Image Preprocessing
-    invert:     Optional[bool]  = typer.Option(None, "--invert",     help="Invert after binarize", rich_help_panel="Image Preprocessing"),
-    flood_fill: Optional[bool]  = typer.Option(None, "--flood-fill", help="Flood-fill open regions", rich_help_panel="Image Preprocessing"),
-    contrast:   Optional[float] = typer.Option(None, "--contrast",   help="Contrast factor", rich_help_panel="Image Preprocessing"),
+    # invert:     Optional[bool]  = typer.Option(None, "--invert",     help="Invert after binarize", rich_help_panel="Image Preprocessing"),
+    # flood_fill: Optional[bool]  = typer.Option(None, "--flood-fill", help="Flood-fill open regions", rich_help_panel="Image Preprocessing"),
+    # contrast:   Optional[float] = typer.Option(None, "--contrast",   help="Contrast factor", rich_help_panel="Image Preprocessing"),
     # Geometry filters
     min_area:   Optional[float] = typer.Option(None, "--min-area",   help="Min polygon area (pre-affine)", rich_help_panel="Geometry filters"),
     min_points: Optional[int]   = typer.Option(None, "--min-points", help="Min ring vertices", rich_help_panel="Geometry filters"),
@@ -155,16 +153,14 @@ def extract_all(
         verbose=verbose,
         image=image,
         out_dir=out_dir,
-        width=width,
-        height=height,
         xmin=xmin,
         ymin=ymin,
         xmax=xmax,
         ymax=ymax,
         crs=crs,
-        invert=invert,
-        flood_fill=flood_fill,
-        contrast=contrast,
+        # invert=invert,
+        # flood_fill=flood_fill,
+        # contrast=contrast,
         min_area=min_area,
         min_points=min_points,
     )
@@ -211,6 +207,7 @@ def image_extract(
     
     
     success("Image extract command executed successfully!")
+
 def main():
     app()
 

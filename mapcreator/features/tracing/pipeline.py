@@ -45,7 +45,7 @@ from shapely.geometry import box
 from matplotlib import pyplot as plt
 
 
-from .img_preprocess import preprocess_image
+from .img_preprocess import process_image
 from .polygonize import extract_polygons_from_binary
 from .gdf_tools import to_gdf
 from .geo_transform import pixel_affine, apply_affine_to_gdf
@@ -56,6 +56,8 @@ from pathlib import Path as _Path
 # from .water_classify import split_ocean_vs_inland, inland_mask_to_polygons
 
 from mapcreator.globals.logutil import info, process_step, error
+from mapcreator.globals.image_utility import detect_dimensions
+from mapcreator import directories as _dirs
 from mapcreator.globals import configs
 
 
@@ -111,6 +113,18 @@ def classify_and_transform(polygons_with_depths, class_defs: dict, meta: dict) -
         gdf = apply_affine_to_gdf(gdf, _affine(meta))
     return gdf
 
+def image_to_binary(image_path: Path, meta: dict, verbose: bool = False) -> np.ndarray:
+    """High-level image preprocessing to binary land mask."""
+    
+    outline_out = _dirs.TEST_DATA_DIR / f"{image_path.stem}_extracted.png"
+
+    land_mask, filled_path = process_image(
+        src_path=image_path,
+        out_path=outline_out,
+        verbose=verbose,
+    )
+    return land_mask, filled_path
+
 def vectorize_image_to_gdfs(image: Path, meta: dict) -> tuple[gpd.GeoDataFrame, gpd.GeoDataFrame, gpd.GeoDataFrame]:
     """High-level extraction driver.
 
@@ -125,15 +139,16 @@ def vectorize_image_to_gdfs(image: Path, meta: dict) -> tuple[gpd.GeoDataFrame, 
     
     #indicates if verbose logging is on
     verbose = meta.get("verbose", False)
+    if 'width' not in meta or 'height' not in meta:
+        w, h = detect_dimensions(image)
+        meta["width"] = w
+        meta["height"] = h
+  
 
-    # Step 1: Preprocess image to binary mask
-    process_step("Step 1: Preprocessing image to binary mask...")
-    bin_img = preprocess_image(
-        image,
-        contrast_factor=meta.get("contrast", 2.0),
-        invert=meta.get("invert", False),
-        flood_fill=meta.get("flood_fill", False),
-    )
+    # Step 1: Process image to centerline outline and filled land mask
+    process_step("Step 1: Processing image to outline + filled land mask...")
+    land_mask, _filled_path = image_to_binary(image, meta, verbose=verbose)
+    bin_img = land_mask
     
     # Step 2: Extract the even and odd contours from the binary image
     process_step("Step 2: Extracting even and odd contours from binary image...")
@@ -167,6 +182,9 @@ def write_all(image: Path, out_dir: Path, meta: dict):
 
     Returns dict[str, str] of output paths.
     """
+    process_step(f"Starting full extraction pipeline for {image.name}...")
+    meta['width'], meta['height'] = detect_dimensions(image)
+
     land_gdf, water_gdf, merged_gdf = vectorize_image_to_gdfs(image, meta)
     # sys.exit("Exiting early for debugging (in write_all)")
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -177,6 +195,7 @@ def write_all(image: Path, out_dir: Path, meta: dict):
     merged_path = export_gdf(merged_gdf, out_dir / configs.MERGED_TRACING_EXTRACT_NAME)
 
     # Raster exports: three class rasters using YAML config (base/terrain/climate)
+    process_step("Building class rasters...")
     cfg_path = meta.get("raster_class_config_path")
     if cfg_path is None:
         # default: project_root/config/raster_classifications.yml

@@ -5,182 +5,12 @@ from pathlib import Path
 import os
 
 from mapcreator.globals.logutil import info, process_step, error, setting_config, success, warn
+from mapcreator.globals.image_utility import write_image, to_u8_for_display, u8_to_bool, bool_to_u8, is_binary_image
 from mapcreator import directories as _dirs
-
-# -------------------------
-# Image preprocessing to binary mask
-# -------------------------
-def _is_binary_image(img: np.ndarray, *, tol: int = 3, mid_fraction_max: float = 0.005) -> bool:
-    """Heuristically determine if an image is (near-)binary.
-
-    Rules (any satisfied returns True):
-    - Unique values are contained within two bands near 0 and 255 (within ``tol``).
-    - Fraction of mid-tone pixels (``tol < v < 255-tol``) is less than ``mid_fraction_max``.
-
-    This accepts common "almost binary" cases like {0,1,254,255}.
-    """
-    if img is None:
-        return False
-    # Ensure uint8 view for comparisons
-    if img.dtype != np.uint8:
-        arr = np.clip(img, 0, 255).astype(np.uint8)
-    else:
-        arr = img
-
-    vals = np.unique(arr)
-    info(f"Unique values in image for binary check: {vals}")
-    if vals.size == 0:
-        return False
-
-    # 1) All unique values fall within low/high bands
-    low_band = vals <= tol
-    high_band = vals >= (255 - tol)
-    if np.all(low_band | high_band):
-        return True
-
-    # 2) Allow tiny proportion of mid-tones as noise/anti-aliasing
-    mid = (arr > tol) & (arr < (255 - tol))
-    mid_frac = float(mid.mean())
-    setting_config(f"Near-binary check: tol={tol}, mid-tone fraction={mid_frac:.6f}")
-    return mid_frac <= float(mid_fraction_max)
-
-def write_image(
-    path: Path | str,
-    image: np.ndarray,
-    *,
-    make_parents: bool = True,
-    log: bool = True,
-    message: str | None = None,
-    overwrite: bool = True,
-) -> Path:
-    """Write an image to disk with directory creation and optional logging.
-
-    Parameters
-    ----------
-    path : Path | str
-        Destination path for the image.
-    image : np.ndarray
-        Image data to write (expects uint8 or a valid OpenCV-encodable array).
-    make_parents : bool, optional
-        Create parent directories if missing, by default True.
-    log : bool, optional
-        Emit an info log after write, by default True.
-    message : str | None, optional
-        Custom message prefix for the log; if None, a generic message is used.
-
-    Returns
-    -------
-    Path
-        The resolved output path written to.
-    """
-    p = Path(path)
-    if make_parents:
-        p.parent.mkdir(parents=True, exist_ok=True)
-
-    # Normalize dtype to uint8 so callers can pass bool or float arrays safely
-    img_u8 = _to_u8_for_display(image)
-    if img_u8 is None:
-        raise ValueError(f"write_image received None for: {p}")
-
-    # Optionally remove existing file to avoid odd caching behaviors
-    if overwrite and p.exists():
-        warn(f"Overwriting existing image: {p.resolve()}")
-        #delete the existing file
-        p.unlink()
-        assert not p.exists(), f"unlink failed; file still exists: {p}"
-
-    ok = cv2.imwrite(p, img_u8)
-
-    if not ok or not p.exists():
-        raise IOError(f"Failed to write image: {p.resolve()}")
-    if log:
-        success(f"{message or 'Wrote image'}: {p.resolve()}")
-    return p
-
-def preprocess_image(img_path: Path, *, contrast_factor=2.0, invert=False, flood_fill=False, verbose=False) -> np.ndarray:
-    """Load and preprocess image to binary mask.
-    Steps:
-      1. Load as grayscale
-      2. Adjust contrast (linear scaling)
-      3. Otsu thresholding to binary
-      4. Optional inversion
-      5. Optional flood fill to close holes in land
-      Returns binary mask (np.ndarray, dtype=uint8, values 0/1)
-    Parameters
-    ----------
-    img_path : Path
-        Path to input image file.
-    contrast_factor : float
-        Contrast scaling factor (alpha) for cv2.convertScaleAbs.
-    invert : bool
-        If True, invert binary image.
-    flood_fill : bool
-        If True, apply flood fill to close holes in land areas.  
-      """
-    process_step("Preprocessing image")
-    info(f"Loading image: {img_path}")
-    
-    img = cv2.imread(str(img_path), cv2.IMREAD_GRAYSCALE)
-    if verbose:
-        cv2.imshow("Original Grayscale Image", img)
-        cv2.waitKey(0)
-        cv2.destroyAllWindows()
-
-    if img is None:
-        raise FileNotFoundError(img_path)
-    setting_config(f"Original image shape: {img.shape}")
-
-    # Adjust contrast
-    img = cv2.convertScaleAbs(img, alpha=contrast_factor, beta=0)
-    setting_config(f"Applied contrast factor: {contrast_factor}")
-
-    # Threshold using Otsu's method
-    thresh_val, bin_ = cv2.threshold(img, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    setting_config(f"Otsu's threshold value: {thresh_val}")
-
-    # Invert if specified
-    if invert:
-        bin_ = 255 - bin_
-        print("Inverted binary image")
-
-    # Optional flood fill to close holes
-    if flood_fill:
-        ff = bin_.copy()
-        cv2.floodFill(ff, None, (0,0), 255)
-        holes = 255 - ff
-        bin_ = cv2.bitwise_or(bin_, holes)
-        print("Applied flood fill to close holes")
-
-    unique_vals = np.unique(bin_)
-    print(f"Unique values in binary image: {unique_vals}")
-    return (bin_ > 0).astype("uint8")
 
 # -------------------------
 # Experimental: outline -> centerline export (testing helper)
 # -------------------------
-def _bool_to_u8(mask: np.ndarray) -> np.ndarray:
-    return (mask.astype(np.uint8) * 255)
-
-def _u8_to_bool(img: np.ndarray) -> np.ndarray:
-    return img > 0
-
-def _to_u8_for_display(arr: np.ndarray) -> np.ndarray:
-    """Normalize arrays to 0-255 uint8 for cv2.imshow.
-    - bool or 0/1 -> 0/255
-    - float in [0,1] -> 0/255
-    - uint8 left as-is; other integer types clipped to 0..255
-    """
-    if arr is None:
-        return None
-    if arr.dtype == np.bool_:
-        return (arr.astype(np.uint8) * 255)
-    if np.issubdtype(arr.dtype, np.floating):
-        a = np.clip(arr, 0.0, 1.0)
-        return (a * 255.0).astype(np.uint8)
-    if arr.dtype != np.uint8:
-        return np.clip(arr, 0, 255).astype(np.uint8)
-    return arr
-
 def _show_step(title: str, img: np.ndarray, verbose: bool, *, save: bool = False, max_w: int = 1280, max_h: int = 900, wait_ms: int = 0, out_dir: Path = _dirs.TEST_DATA_DIR) -> None:
     """Show an image scaled to fit on screen using a resizable window and optionally save the step.
     Set wait_ms=0 to wait for a key; >0 waits that many milliseconds.
@@ -188,7 +18,7 @@ def _show_step(title: str, img: np.ndarray, verbose: bool, *, save: bool = False
     """
     if not verbose:
         return
-    disp = _to_u8_for_display(img)
+    disp = to_u8_for_display(img)
     if disp is None:
         return
     # Optional save of original-scale frame
@@ -197,7 +27,7 @@ def _show_step(title: str, img: np.ndarray, verbose: bool, *, save: bool = False
             out_dir = _dirs.TEST_DATA_DIR
             out_dir.mkdir(parents=True, exist_ok=True)
             fname = re.sub(r"[^A-Za-z0-9._-]+", "_", title.strip()) + ".png"
-            write_image(out_dir / fname, _to_u8_for_display(img), log=False)
+            write_image(out_dir / fname, to_u8_for_display(img), log=False)
         except Exception as _e:
             # Non-fatal: continue to display even if save fails
             pass
@@ -246,7 +76,7 @@ def _closing_bool(mask: np.ndarray, ksize: int) -> np.ndarray:
         return morph.closing(mask, fp)
     except Exception:
         k = cv2.getStructuringElement(cv2.MORPH_RECT, (int(ksize), int(ksize)))
-        return cv2.morphologyEx(_bool_to_u8(mask), cv2.MORPH_CLOSE, k) > 0
+        return cv2.morphologyEx(bool_to_u8(mask), cv2.MORPH_CLOSE, k) > 0
 
 def _skeletonize_bool(mask: np.ndarray) -> np.ndarray:
     """Skeletonize a boolean mask to 1px lines.
@@ -264,7 +94,7 @@ def _skeletonize_bool(mask: np.ndarray) -> np.ndarray:
             raise ImportError(
                 "Skeletonization requires scikit-image or opencv-contrib. Install 'scikit-image' or 'opencv-contrib-python'."
             )
-        thin = ximg.thinning((_bool_to_u8(mask)))
+        thin = ximg.thinning((bool_to_u8(mask)))
         return thin > 0
 
 def _find_endpoints_u8(skel_u8: np.ndarray) -> np.ndarray:
@@ -348,7 +178,7 @@ def _fill_land_from_outline(
     barrier = outline_bool
     if dilate_ksize and dilate_iter and dilate_ksize >= 2 and dilate_iter > 0:
         k = cv2.getStructuringElement(cv2.MORPH_RECT, (int(dilate_ksize), int(dilate_ksize)))
-        barrier = cv2.dilate(_bool_to_u8(barrier), k, iterations=int(dilate_iter)) > 0
+        barrier = cv2.dilate(bool_to_u8(barrier), k, iterations=int(dilate_iter)) > 0
 
     _show_step("10a - Barrier For Fill (after dilation)", barrier, verbose, save=True)
 
@@ -480,12 +310,12 @@ def trace_centerline_from_file(
         setting_config("Invert lines: True (strokes become foreground)")
         _show_step("05 - Threshold (final polarity)", binimg, verbose, save=True)
 
-    mask = _u8_to_bool(binimg)
+    mask = u8_to_bool(binimg)
 
     # Optional: small dilation to seal hairline gaps before closing
     if isinstance(pre_dilate_ksize, int) and pre_dilate_ksize >= 2 and pre_dilate_iter and pre_dilate_iter > 0:
         k = cv2.getStructuringElement(cv2.MORPH_RECT, (int(pre_dilate_ksize), int(pre_dilate_ksize)))
-        mask = cv2.dilate(_bool_to_u8(mask), k, iterations=int(pre_dilate_iter)) > 0
+        mask = cv2.dilate(bool_to_u8(mask), k, iterations=int(pre_dilate_iter)) > 0
         setting_config(f"Pre-dilate k={pre_dilate_ksize}, iter={pre_dilate_iter}")
         _show_step("05a - After Pre-Dilate", mask, verbose, save=True)
     
@@ -514,7 +344,7 @@ def trace_centerline_from_file(
     # sys.exit(f"Debug exit after skeletonization")
     if prune_spurs:
         # Simple endpoint erosion for a few rounds
-        u8 = _bool_to_u8(skel)
+        u8 = bool_to_u8(skel)
         kernel = np.array([[1,1,1],[1,10,1],[1,1,1]], dtype=np.uint8)
         for _ in range(int(spur_iterations)):
             nb = cv2.filter2D((u8 > 0).astype(np.uint8), -1, kernel)
@@ -526,7 +356,7 @@ def trace_centerline_from_file(
         setting_config("Pruned short spurs")
         _show_step("09 - After Spur Prune", skel, verbose, save=True)
 
-    out = _bool_to_u8(skel)
+    out = bool_to_u8(skel)
     if verbose:
         _show_step("10 - Final Outline (computed)", out, verbose, save=True)
 
@@ -598,11 +428,11 @@ def process_image(
     except Exception:
         _gray_probe = None
     print(f"Probe image shape: {_gray_probe.shape if _gray_probe is not None else 'None'}")
-    if _gray_probe is not None and _is_binary_image(_gray_probe):
+    if _gray_probe is not None and is_binary_image(_gray_probe):
         setting_config("Detected binary source image (0/255); skipping outline pipeline")
         land_mask = (_gray_probe > 127)
         filled_out = out_path.with_name(out_path.stem + "_filled.png")
-        filled_path = write_image(filled_out, _bool_to_u8(land_mask), message="Saved binary land mask as-is")
+        filled_path = write_image(filled_out, bool_to_u8(land_mask), message="Saved binary land mask as-is")
         return land_mask, filled_path
 
     try:
@@ -639,7 +469,7 @@ def process_image(
             verbose=verbose,
         )
         filled_out = out_path.with_name(out_path.stem + "_filled.png")
-        filled_path = write_image(filled_out, _bool_to_u8(land_mask), message="Wrote filled land mask")
+        filled_path = write_image(filled_out, bool_to_u8(land_mask), message="Wrote filled land mask")
     except Exception as e:
         error(f"Fill from outline failed: {e}")
         raise
