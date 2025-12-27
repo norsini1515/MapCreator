@@ -193,8 +193,8 @@ def extract_all(
 def test():
     success("Test command executed successfully!")
 
-@app.command("image-extract")
-def image_extract(
+@app.command("extract-image")
+def extract_image(
     # I/O
     config: Optional[Path] = typer.Option(
         DEFAULT_CONFIG_FILE_PATH, "--config", "-c",
@@ -202,14 +202,17 @@ def image_extract(
         rich_help_panel="I/O"
     ),
 ):
-    """turn a hand drawn map into a black and white outline image ready for further processing or easy manipulation"""
-    
-    
+    """turn a hand drawn map into a black and white outline image ready for further processing or easy manipulation
+    A subet of extract-all focused on image preprocessing only.
+    Outputs a binary outline image to the specified out_dir.
+    Currently this image if filled in this means all internal lakes/sea will be white, and ocean black.
+    Todo: add options to control flood fill and inversion.
+    Currently all parameters are default as the work well with a direct image of the map drawing. 
+    """
+      
     
     success("Image extract command executed successfully!")
 
-def main():
-    app()
 
 @app.command("recolor")
 def recolor(
@@ -217,7 +220,10 @@ def recolor(
     section: str = typer.Option("terrain", "--section", "-s", help="Section in YAML: base|terrain|climate"),
     config: Path = typer.Option(directories.CONFIG_DIR / "raster_classifications.yml", "--config", "-c", help="YAML file for class colors."),
 ):
-    """Reapply palette from YAML to an existing class raster (in place)."""
+    """Reapply palette from YAML to an existing class raster (in place).
+    Example call:
+        mapcreator recolor path/to/terrain_class_map.tif --section terrain --config path/to/raster_classifications.yml
+    """
     cfg = _load_yaml(config)
     apply_palette_from_yaml(raster, cfg, section)
 
@@ -242,6 +248,10 @@ def paint(
         output=output,
         overwrite=overwrite,
     )
+
+
+def main():
+    app()
 
 if __name__ == "__main__":
     main()
