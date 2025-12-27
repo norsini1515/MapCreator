@@ -125,7 +125,12 @@ def image_to_binary(image_path: Path, meta: dict, verbose: bool = False) -> np.n
     )
     return land_mask, filled_path
 
-def vectorize_image_to_gdfs(image: Path, meta: dict) -> tuple[gpd.GeoDataFrame, gpd.GeoDataFrame, gpd.GeoDataFrame]:
+def vectorize_image_to_gdfs(
+        image: Path, 
+        meta: dict,
+        even_defs: dict = configs.LAND_DEFS,
+        odd_defs: dict = configs.WATERBODY_DEFS,
+        ) -> tuple[gpd.GeoDataFrame, gpd.GeoDataFrame, gpd.GeoDataFrame]:
     """High-level extraction driver.
 
     Steps:
@@ -162,22 +167,31 @@ def vectorize_image_to_gdfs(image: Path, meta: dict) -> tuple[gpd.GeoDataFrame, 
 
     # Step 3: Classify polygons into land / waterbody GDFs and transform
     process_step("Step 3: Building land and waterbody GeoDataFrames...")
-    land_gdf = classify_and_transform(even_polys, configs.LAND_DEFS, meta)
-    water_gdf = classify_and_transform(odd_polys, configs.WATERBODY_DEFS, meta)
+    even_gdf = classify_and_transform(even_polys, even_defs, meta)
+    odd_gdf = classify_and_transform(odd_polys, odd_defs, meta)
     
     if verbose:
-        info(f"\nLand GDF CRS: {land_gdf.crs}, shape {land_gdf.shape}")
-        info(f"Water GDF CRS: {water_gdf.crs}, shape {water_gdf.shape}")
+        info(f"\nLand GDF CRS: {even_gdf.crs}, shape {even_gdf.shape}")
+        info(f"Water GDF CRS: {odd_gdf.crs}, shape {odd_gdf.shape}")
 
     process_step("Building merged base...")
-    merged_gdf = build_merged_base(land_gdf, water_gdf)
+    merged_gdf = build_merged_base(even_gdf, odd_gdf)
     info(f"Merged GDF: {len(merged_gdf)} features, CRS: {merged_gdf.crs}, shape {merged_gdf.shape}\n")
     merged_gdf.plot(column="class", legend=True)
-    plt.show()
+    if verbose == 'debug':
+        plt.show()
     
-    return land_gdf, water_gdf, merged_gdf
+    return even_gdf, odd_gdf, merged_gdf
 
-def write_all(image: Path, out_dir: Path, meta: dict):
+def extract_all(
+        image: Path, 
+        out_dir: Path, 
+        meta: dict, 
+        *
+        output_vectors: bool = True,
+        even_defs: dict = configs.LAND_DEFS,
+        odd_defs: dict = configs.WATERBODY_DEFS,
+        ) -> dict[str, str]:
     """Run full extraction and write all vector + raster products.
 
     Returns dict[str, str] of output paths.
@@ -185,14 +199,16 @@ def write_all(image: Path, out_dir: Path, meta: dict):
     process_step(f"Starting full extraction pipeline for {image.name}...")
     meta['width'], meta['height'] = detect_dimensions(image)
 
-    land_gdf, water_gdf, merged_gdf = vectorize_image_to_gdfs(image, meta)
+    even_gdf, odd_gdf, merged_gdf = vectorize_image_to_gdfs(image, meta, even_defs=even_defs, odd_defs=odd_defs)
     # sys.exit("Exiting early for debugging (in write_all)")
     out_dir.mkdir(parents=True, exist_ok=True)
 
     # Vector exports
-    land_path   = export_gdf(land_gdf,   out_dir / configs.LAND_TRACING_EXTRACT_NAME)
-    water_path  = export_gdf(water_gdf, out_dir / configs.WATER_TRACING_EXTRACT_NAME)
-    merged_path = export_gdf(merged_gdf, out_dir / configs.MERGED_TRACING_EXTRACT_NAME)
+    if output_vectors:
+        #default to land/waterbody filenames (base case) if not specified in defs
+        even_path   = export_gdf(even_gdf,   out_dir / even_defs.get("file_name", configs.LAND_TRACING_EXTRACT_NAME))
+        odd_path  = export_gdf(odd_gdf, out_dir / odd_defs.get("file_name", configs.WATER_TRACING_EXTRACT_NAME))
+        merged_path = export_gdf(merged_gdf, out_dir / configs.MERGED_TRACING_EXTRACT_NAME)
 
     # Raster exports: three class rasters using YAML config (base/terrain/climate)
     process_step("Building class rasters...")
@@ -207,16 +223,18 @@ def write_all(image: Path, out_dir: Path, meta: dict):
         error(f"Failed to load raster classifications YAML at {cfg_path}: {e}")
         class_cfg = {}
 
+    #!TODO: allow output paths to be customized, terrain and climate are identical, redeundant, specify which raster to output
+    #remove output from construction of rasters, return files and data.
     world_class_path, terrain_class_path, climate_class_path = make_class_rasters(
         merged_gdf, out_dir,
         width=meta["width"], height=meta["height"],
         extent=meta["extent"], crs=meta["crs"],
         class_config=class_cfg,
     )
-
+    #all the returns 
     return {
-        "land": str(land_path),
-        "waterbodies": str(water_path),
+        "even": str(even_path),
+        "odd": str(odd_path),
         "merged": str(merged_path),
         "world": str(world_class_path),
         "terrain": str(terrain_class_path),

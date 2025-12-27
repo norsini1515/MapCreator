@@ -406,6 +406,10 @@ def process_image(
         # Fill parameters
         fill_dilate_ksize: int = 1,
         fill_dilate_iter: int = 2,
+        # -------------------------
+        #output parameters
+        output_file: bool = True,
+
 ):
     """Process a drawn map image into a centerline outline and filled land.
 
@@ -454,7 +458,8 @@ def process_image(
             threshold_offset=threshold_offset,
             verbose=verbose, # show intermediate steps
         )
-        write_image(out_path, outline_u8, message="Wrote centerline outline")
+        if output_file:
+            write_image(out_path, outline_u8, message="Wrote centerline outline")
         
     except Exception as e:
         error(f"Centerline export failed: {e}")
