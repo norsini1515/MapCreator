@@ -10,15 +10,18 @@ as thin wrappers for compatibility but internally reuse shared code.
 """
 
 from typing import Optional
-
+from affine import Affine
 
 from mapcreator.globals.configs import MIN_POINTS, MIN_AREA
 from mapcreator.features.tracing.contour_extraction import ContourTree, _cnt_coords
 from mapcreator.globals.logutil import info, process_step, error, warn, setting_config
+from mapcreator.features.tracing.geo_transform import apply_affine_to_gdf
 
 from shapely.ops import unary_union
 from shapely.geometry import Polygon, box
 from shapely.validation import explain_validity
+
+import geopandas as gpd
 
 def _extent_polygon(meta: dict):
     # Build extent in PIXEL space (0..width, 0..height). We transform to map coords later.
@@ -259,7 +262,7 @@ def compute_extent_polygon(
     
     return extent_poly
 
-def extract_polygons_from_binary(bin_img, meta: dict, verbose: bool = False):
+def extract_polygons_from_binary(bin_img, meta: dict, verbose: bool = False) -> tuple[list, list]:
     """Convenience wrapper: from a binary land mask to even/odd polygons.
 
     Even-depth shells correspond to the foreground class in the mask (1s),
@@ -294,6 +297,37 @@ def extract_polygons_from_binary(bin_img, meta: dict, verbose: bool = False):
                 info("Added extent polygon to odd set (depth=0)")
 
     return even_polys, odd_polys
+
+def polygons_to_gdf(polygons, crs:str="EPSG:3857", affine_val:Affine=None, verbose: bool|str = False) -> gpd.GeoDataFrame:
+    """Convert a list of Shapely polygons (or (polygon, depth) tuples) to a GeoDataFrame."""
+    from mapcreator.features.tracing.gdf_tools import to_gdf
+
+    # Support both tuples and plain geometries
+    if isinstance(polygons[0], Polygon):
+        if verbose == 'debug':
+            setting_config("polygons_to_vector: Detected list of Polygon geometries.") 
+        geoms = list(polygons)
+        depths = [None] * len(geoms)
+    elif isinstance(polygons[0], tuple) and len(polygons[0]) == 2:
+        if verbose == 'debug':
+            setting_config("polygons_to_vector: Detected list of (polygon, depth) tuples.") 
+        geoms = [g for g, _ in polygons]
+        depths = [_d for (_g, _d) in polygons]
+    else:
+        error("polygons_to_vector expects either a list of geoms or a list of (polygon, depth) tuples.")
+        raise ValueError("Invalid polygons input format.")
+    
+    metadata = {"depth": depths}
+
+    gdf = to_gdf(geoms, metadata, crs)
+    
+    if affine_val is not None and isinstance(affine_val, Affine):
+        gdf = apply_affine_to_gdf(gdf, affine_val)
+        info("Applied affine transformation to GeoDataFrame geometries.")
+    
+    info(f"Converted {len(gdf)} polygons to GeoDataFrame with: CRS {gdf.crs}, shape {gdf.shape}")
+
+    return gdf
 
 if __name__ == "__main__":
     """Simple test and visualization"""

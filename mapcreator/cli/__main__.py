@@ -26,7 +26,12 @@ def _pick(cfg: Dict[str, Any], key: str, cli_val):
     return config_val if config_val is not None else cli_val
 
 # import AFTER helpers so the module loads cleanly
-from mapcreator.features.tracing.pipeline import write_all as _write_all
+from mapcreator.features.tracing.pipeline import (
+    extract_all,
+    extract_image,
+    extract_vectors,
+    extract_rasters,
+)
 from mapcreator.globals.logutil import Logger, info, warn, error, success, process_step, setting_config
 from mapcreator.globals import directories, configs
 from mapcreator.features.tracing.reclass import burn_polygons_into_class_raster, apply_palette_from_yaml
@@ -182,7 +187,7 @@ def extract_all(
         raise typer.Exit(code=2)
 
     out.mkdir(parents=True, exist_ok=True)
-    results = _write_all(img, out, meta)
+    results = extract_all(img, out, meta)
     for k, v in results.items():
         info(f"{k}: {v}")
     success(f"Extraction completed successfully!, Outputs in: {out}")
@@ -202,16 +207,194 @@ def extract_image(
         rich_help_panel="I/O"
     ),
 ):
-    """turn a hand drawn map into a black and white outline image ready for further processing or easy manipulation
-    A subet of extract-all focused on image preprocessing only.
-    Outputs a binary outline image to the specified out_dir.
-    Currently this image if filled in this means all internal lakes/sea will be white, and ocean black.
-    Todo: add options to control flood fill and inversion.
-    Currently all parameters are default as the work well with a direct image of the map drawing. 
+    """Preprocess a hand-drawn map into outline + filled land mask.
+
+    This is a subset of ``extract-all`` focused on image preprocessing only.
+    It writes a centerline outline PNG and a filled land-mask PNG.
     """
-      
-    
-    success("Image extract command executed successfully!")
+
+    # Load configuration
+    cfg = _load_yaml(config)
+    meta = load_config(
+        cfg,
+        log_file=None,
+        verbose=cfg.get("verbose", False),
+        image=cfg.get("image"),
+        out_dir=cfg.get("out_dir"),
+        xmin=cfg.get("extent", {}).get("xmin"),
+        ymin=cfg.get("extent", {}).get("ymin"),
+        xmax=cfg.get("extent", {}).get("xmax"),
+        ymax=cfg.get("extent", {}).get("ymax"),
+        crs=cfg.get("crs"),
+        min_area=cfg.get("min_area"),
+        min_points=cfg.get("min_points"),
+    )
+
+    img = Path(meta["image"]) if meta.get("image") else None
+    out = Path(meta["out_dir"]) if meta.get("out_dir") else None
+
+    if not img or not out:
+        error("image and out_dir are required (via YAML for extract-image).")
+        raise typer.Exit(code=2)
+
+    out.mkdir(parents=True, exist_ok=True)
+
+    results = extract_image(img, out, meta)
+    for k, v in results.items():
+        if v:
+            info(f"{k}: {v}")
+
+    success("Image extraction completed successfully!")
+
+
+@app.command("extract-vector")
+def extract_vector(
+    # I/O
+    config: Optional[Path] = typer.Option(
+        DEFAULT_CONFIG_FILE_PATH, "--config", "-c",
+        help="YAML file with parameters. Flags override YAML.",
+        rich_help_panel="I/O",
+    ),
+    image: Optional[Path] = typer.Option(
+        None, "--image", "-i",
+        help="Input raster (jpg/png). If omitted, read from YAML.",
+        rich_help_panel="I/O",
+    ),
+    out_dir: Optional[Path] = typer.Option(
+        None, "--out-dir", "-o",
+        help="Output directory. If omitted, read from YAML.",
+        rich_help_panel="I/O",
+    ),
+    xmin: Optional[float] = typer.Option(None, "--xmin", help="Extent min X", rich_help_panel="World grid"),
+    ymin: Optional[float] = typer.Option(None, "--ymin", help="Extent min Y", rich_help_panel="World grid"),
+    xmax: Optional[float] = typer.Option(None, "--xmax", help="Extent max X", rich_help_panel="World grid"),
+    ymax: Optional[float] = typer.Option(None, "--ymax", help="Extent max Y", rich_help_panel="World grid"),
+    crs: Optional[str] = typer.Option(None, "--crs", help="Output CRS (e.g., 'EPSG:3857')", rich_help_panel="World grid"),
+    min_area: Optional[float] = typer.Option(None, "--min-area", help="Min polygon area (pre-affine)", rich_help_panel="Geometry filters"),
+    min_points: Optional[int] = typer.Option(None, "--min-points", help="Min ring vertices", rich_help_panel="Geometry filters"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Print resolved config and exit", rich_help_panel="Utility"),
+    verbose: bool = typer.Option(False, "--verbose", help="Enable verbose logging", rich_help_panel="Utility"),
+):
+    """Extract only vector products (land, waterbody, merged polygons)."""
+
+    log_path = _resolve_log_path()
+    logger = Logger(logfile_path=log_path)
+
+    cfg = _load_yaml(config)
+    meta = load_config(
+        cfg,
+        log_file=log_path,
+        verbose=verbose,
+        image=image,
+        out_dir=out_dir,
+        xmin=xmin,
+        ymin=ymin,
+        xmax=xmax,
+        ymax=ymax,
+        crs=crs,
+        min_area=min_area,
+        min_points=min_points,
+    )
+
+    info("Resolved configuration (extract-vector):")
+    for k, v in meta.items():
+        setting_config(f"  {k}: {v}")
+
+    img = Path(meta["image"]) if meta["image"] else None
+    out = Path(meta["out_dir"]) if meta["out_dir"] else None
+
+    if dry_run:
+        logger.teardown()
+        raise typer.Exit()
+
+    if not img or not out:
+        error("image and out_dir are required (via YAML or flags).")
+        logger.teardown()
+        raise typer.Exit(code=2)
+
+    out.mkdir(parents=True, exist_ok=True)
+
+    _even_gdf, _odd_gdf, _merged_gdf, results = extract_vectors(img, out, meta)
+    for k, v in results.items():
+        info(f"{k}: {v}")
+
+    success(f"Vector extraction completed successfully!, Outputs in: {out}")
+    logger.teardown()
+
+
+@app.command("extract-raster")
+def extract_raster(
+    # I/O
+    config: Optional[Path] = typer.Option(
+        DEFAULT_CONFIG_FILE_PATH, "--config", "-c",
+        help="YAML file with parameters. Flags override YAML.",
+        rich_help_panel="I/O",
+    ),
+    image: Optional[Path] = typer.Option(
+        None, "--image", "-i",
+        help="Input raster (jpg/png). If omitted, read from YAML.",
+        rich_help_panel="I/O",
+    ),
+    out_dir: Optional[Path] = typer.Option(
+        None, "--out-dir", "-o",
+        help="Output directory. If omitted, read from YAML.",
+        rich_help_panel="I/O",
+    ),
+    xmin: Optional[float] = typer.Option(None, "--xmin", help="Extent min X", rich_help_panel="World grid"),
+    ymin: Optional[float] = typer.Option(None, "--ymin", help="Extent min Y", rich_help_panel="World grid"),
+    xmax: Optional[float] = typer.Option(None, "--xmax", help="Extent max X", rich_help_panel="World grid"),
+    ymax: Optional[float] = typer.Option(None, "--ymax", help="Extent max Y", rich_help_panel="World grid"),
+    crs: Optional[str] = typer.Option(None, "--crs", help="Output CRS (e.g., 'EPSG:3857')", rich_help_panel="World grid"),
+    min_area: Optional[float] = typer.Option(None, "--min-area", help="Min polygon area (pre-affine)", rich_help_panel="Geometry filters"),
+    min_points: Optional[int] = typer.Option(None, "--min-points", help="Min ring vertices", rich_help_panel="Geometry filters"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Print resolved config and exit", rich_help_panel="Utility"),
+    verbose: bool = typer.Option(False, "--verbose", help="Enable verbose logging", rich_help_panel="Utility"),
+):
+    """Extract only class rasters (world/terrain/climate) from the image."""
+
+    log_path = _resolve_log_path()
+    logger = Logger(logfile_path=log_path)
+
+    cfg = _load_yaml(config)
+    meta = load_config(
+        cfg,
+        log_file=log_path,
+        verbose=verbose,
+        image=image,
+        out_dir=out_dir,
+        xmin=xmin,
+        ymin=ymin,
+        xmax=xmax,
+        ymax=ymax,
+        crs=crs,
+        min_area=min_area,
+        min_points=min_points,
+    )
+
+    info("Resolved configuration (extract-raster):")
+    for k, v in meta.items():
+        setting_config(f"  {k}: {v}")
+
+    img = Path(meta["image"]) if meta["image"] else None
+    out = Path(meta["out_dir"]) if meta["out_dir"] else None
+
+    if dry_run:
+        logger.teardown()
+        raise typer.Exit()
+
+    if not img or not out:
+        error("image and out_dir are required (via YAML or flags).")
+        logger.teardown()
+        raise typer.Exit(code=2)
+
+    out.mkdir(parents=True, exist_ok=True)
+
+    results = extract_rasters(img, out, meta)
+    for k, v in results.items():
+        info(f"{k}: {v}")
+
+    success(f"Raster extraction completed successfully!, Outputs in: {out}")
+    logger.teardown()
 
 
 @app.command("recolor")

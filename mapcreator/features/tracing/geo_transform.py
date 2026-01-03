@@ -14,3 +14,7 @@ def pixel_affine(width, height, *, xmin, ymin, xmax, ymax):
 def apply_affine_to_gdf(gdf, A: Affine):
     gdf["geometry"] = gdf.geometry.affine_transform((A.a, A.b, A.d, A.e, A.xoff, A.yoff))
     return gdf
+
+def affine_from_meta(meta) -> Affine:
+    w, h = meta["image_shape"]
+    return pixel_affine(w, h, **meta["extent"])

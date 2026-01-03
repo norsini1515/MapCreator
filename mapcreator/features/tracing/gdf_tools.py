@@ -1,7 +1,8 @@
 import pandas as pd
 import geopandas as gpd
+from mapcreator.globals.logutil import info, process_step, error, setting_config, success, warn
 
-
+from typing import List
 def to_gdf(polygons, metadata=None, crs="EPSG:3857"):
     metadata = metadata or {}
     df = pd.DataFrame(metadata, index=range(len(polygons)))
@@ -20,3 +21,36 @@ def _ensure_crs(gdf, crs):
         # safer to reproject than fail
         return gdf.to_crs(crs)
     return gdf
+
+def merge_gdfs(gdfs: gpd.GeoDataFrame|List[gpd.GeoDataFrame], 
+               verbose:bool = False,
+            ) -> gpd.GeoDataFrame:
+    
+    """Merge multiple GeoDataFrames into one, ensuring non-empty and consistent CRS."""
+
+    if isinstance(gdfs, gpd.GeoDataFrame):
+        gdfs = [gdfs]
+    elif not isinstance(gdfs, list):
+        raise ValueError("gdfs must be a GeoDataFrame or list of GeoDataFrames.")
+    
+    valid_gdfs = [gdf for gdf in gdfs if not gdf.empty]
+    crs=valid_gdfs[0].crs
+    if verbose:
+        info(f"Merging {len(valid_gdfs)} GeoDataFrames into one with CRS {crs}.")
+        if len(valid_gdfs) < len(gdfs):
+              warn(f"{len(valid_gdfs)}/{len(gdfs)} frames valid...")
+
+    merged_gdf = gpd.GeoDataFrame(
+        pd.concat(valid_gdfs, ignore_index=True),
+        crs=crs,
+    )
+
+    if verbose:
+        from matplotlib import pyplot as plt
+
+        info(f"Merged GDF: {len(merged_gdf)} features, CRS: {merged_gdf.crs}, shape {merged_gdf.shape}\n")
+        merged_gdf.plot(column="class", legend=True)
+        plt.show()
+
+    return merged_gdf
+

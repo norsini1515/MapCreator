@@ -11,8 +11,13 @@ WORLD_NAME = 'Atriath'
 MIN_AREA = 2
 MIN_POINTS = 3
 
-LAND_DEFS = {"class": "land", "depth": None, "file_name": "land.shp"}
-WATERBODY_DEFS = {"class": "waterbody", "depth": None, "file_name": "waterbodies.shp"}
+#depth filled at polygon generation time, here for placeholding
+#layer = ??
+LAND_DEFS = {"class": "land"}
+WATER_DEFS = {"class": "waterbody"}
+
+LAND_EXPORT_DEFS = {"file_name": "land.geojson"}
+WATER_EXPORT_DEFS = {"file_name": "water.geojson"}
 
 #----------------------
 

@@ -28,6 +28,7 @@ def _transform_from_extent(width: int, height: int, extent: dict):
         extent["xmax"], extent["ymax"],
         width, height,
     )
+
 def _class_id_raster(
     gdf,
     *,
