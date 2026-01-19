@@ -49,10 +49,9 @@ from .polygonize import extract_polygons_from_binary, polygons_to_gdf
 from .geo_transform import affine_from_meta
 from .exporters import export_gdf
 from .gdf_tools import merge_gdfs
-from .rasters import make_class_rasters
+from .rasters import build_class_raster, get_raster_class_config
 import yaml
 from pathlib import Path as _Path
-# from .water_classify import split_ocean_vs_inland, inland_mask_to_polygons
 
 from mapcreator.globals.logutil import info, process_step, error, setting_config, success, warn
 from mapcreator.globals.image_utility import detect_dimensions
@@ -64,7 +63,12 @@ def _validate_output_dir_meta(
         out_dir: Path | str | None,
         test_data_default_subfolder: str,
         ) -> Tuple[Path | None, bool]:
-    """Internal helper to validate output directory and determine if outputs should be written."""
+    """Internal helper to validate output directory and determine if outputs should be written.
+
+    Doesn't matter if out_dir is in meta, if not provided as an argument and verbose is not on, no outputs will be written. 
+    If verbose is on and out_dir is not provided, defaults to test data directory with a subfolder for the specific step. 
+
+    """
     verbose = meta.get("verbose", False)
     write_outputs = (out_dir is not None) or verbose in (True, "info", "debug")
 
@@ -80,6 +84,7 @@ def _validate_output_dir_meta(
 
     return out_dir, write_outputs
 
+# --- Image preprocessing portion of the pipeline --- #
 def extract_image(
     image: Path,
     meta: dict,
@@ -87,17 +92,35 @@ def extract_image(
     out_dir: Path = None,
     outline_suffix: str = "_outline",
 ) -> np.ndarray:
-    """
-    Preprocess a hand-drawn basemap to a binary land mask image.
-    doesnt' output by default unless verbose is on or out_dir specified
+    """Preprocess a hand‑drawn basemap into a binary land mask.
 
-    This is a focused, image-only front-end around ``process_image``.
+    This is a focused, image‑only front‑end around :func:`process_image` that
+    prepares the grayscale input, thresholds it, and returns a 0/1 land mask.
 
-    It writes two PNGs into ``out_dir``:
-      - ``<stem><outline_suffix>.png``: centerline outline
-      - ``<stem><outline_suffix>_filled.png``: filled land mask (white land, black water)
+    Depending on ``meta['verbose']`` and ``out_dir``, it can also write
+    diagnostic PNGs of the traced outline and filled mask.
 
-    Returns filled land mask array.
+    Parameters
+    ----------
+    image
+        Path to the hand‑prepared source basemap image.
+    meta
+        Metadata dictionary for the pipeline run. May contain ``"verbose"``
+        to control logging and output. If ``"image_shape"`` is missing, the
+        image dimensions are detected and stored in this dict.
+    out_dir
+        Optional output directory for diagnostic PNGs. If omitted but
+        ``meta['verbose']`` requests output, a test‑data subfolder is chosen
+        automatically via ``_validate_output_dir_meta``.
+    outline_suffix
+        Suffix appended to the image stem for the outline PNG filename. The
+        filled version uses the same stem with ``"_filled"`` appended.
+
+    Returns
+    -------
+    np.ndarray
+        2D binary land‑mask array where 1 indicates land and 0 indicates
+        water, suitable for downstream polygon extraction.
     """
     process_step(f"Extracting land mask image from {image.name}...")
     
@@ -123,7 +146,10 @@ def extract_image(
     )
 
     return land_mask
+# --- Image preprocessing portion of the pipeline is done --- #
 
+
+# --- Vector portion of the pipeline --- #
 def extract_vectors(
         img: Union[np.ndarray, Path], #either a mask array or a path to an image
         meta: dict,
@@ -131,9 +157,41 @@ def extract_vectors(
         out_dir: Path = None,
         add_parity: bool = True,
     ) -> Tuple[gpd.GeoDataFrame, gpd.GeoDataFrame]:
-    """
-    Run vector extraction only and write GeoDataFrames to disk.
+    """Extract land/water polygons from a binary mask or image.
 
+    This step converts a preprocessed basemap (or its binary land mask) into two
+    GeoDataFrames containing the even and odd polygon sets used downstream in
+    the tracing pipeline.
+
+    Parameters
+    ----------
+    img
+        Either a 2D NumPy array representing the binary land mask (1 = land,
+        0 = water) or a Path to the original source image. If a Path is
+        provided, :func:`extract_image` is called internally to build the mask.
+    meta
+        Metadata dictionary for the pipeline run. Expected to contain entries
+        such as ``crs``, ``extent``, ``image_shape``, and optional
+        ``verbose`` flags used for logging and transforms.
+    out_dir
+        Optional directory where intermediate vector outputs will be written.
+        When provided (or when ``meta['verbose']`` enables output), two
+        GeoJSON files are created: ``even.geojson`` and ``odd.geojson``.
+    add_parity
+        If True, adds a ``parity`` column to each GeoDataFrame with values
+        ``"even"`` and ``"odd"`` respectively.
+
+    Returns
+    -------
+    Tuple[GeoDataFrame, GeoDataFrame]
+        ``(even_gdf, odd_gdf)`` where ``even_gdf`` represents the land-view
+        polygons and ``odd_gdf`` represents the water-view polygons in the
+        chosen coordinate reference system.
+
+    Raises
+    ------
+    ValueError
+        If no even or odd polygons can be extracted from the binary image.
     """
     verbose = meta.get("verbose", False)
     out_dir, write_outputs = _validate_output_dir_meta(meta, out_dir, 'extract_vectors')
@@ -192,7 +250,30 @@ def label_vectors(
         class_def: dict,
         verbose: bool = False,
     ) -> gpd.GeoDataFrame:
-    """Assign class labels and metadata to a GeoDataFrame based on provided definitions."""
+    """Attach class metadata columns to a vector layer.
+
+    This is a lightweight helper that takes a GeoDataFrame and a dictionary of
+    attribute definitions (for example, land/water class tags) and returns a
+    copy with those attributes applied as columns.
+
+    Parameters
+    ----------
+    gdf
+        Input GeoDataFrame whose geometries should be labeled.
+    class_def
+        Mapping of attribute names to values to assign to every row in the
+        output GeoDataFrame. Common keys include ``"class"`` and other
+        semantic tags used downstream.
+    verbose
+        If True, emits a warning via the logging utilities when ``"class"`` is
+        missing from ``class_def`` and defaults it to ``"unknown"``.
+
+    Returns
+    -------
+    GeoDataFrame
+        A copy of ``gdf`` with one column per key in ``class_def`` and the
+        corresponding constant values applied to all features.
+    """
     classified_gdf = gdf.copy()
     class_def = dict(class_def) #make a copy to avoid mutating input
 
@@ -205,76 +286,78 @@ def label_vectors(
         classified_gdf[key] = value
 
     return classified_gdf
+# --- Vector portion of the pipeline is done ---#
 
-def _build_class_rasters(
-    merged_gdf: gpd.GeoDataFrame,
-    out_dir: Path,
-    meta: dict,
-) -> dict[str, str]:
-    """Internal helper to build world/terrain/climate class rasters.
 
-    Uses the same YAML-driven configuration as the original ``extract_all``.
-    """
-    process_step("Building class rasters...")
-    cfg_path = meta.get("raster_class_config_path")
-    if cfg_path is None:
-        # default: project_root/config/raster_classifications.yml
-        cfg_path = str(
-            (_Path(__file__).resolve().parents[3] / "config" / "raster_classifications.yml").as_posix()
-        )
-    try:
-        with open(cfg_path, "r", encoding="utf-8") as f:
-            class_cfg = yaml.safe_load(f) or {}
-    except Exception as e:
-        error(f"Failed to load raster classifications YAML at {cfg_path}: {e}")
-        class_cfg = {}
-
-    #!TODO: allow output paths to be customized, terrain and climate are identical, redeundant, specify which raster to output
-    #remove output from construction of rasters, return files and data.
-    even_class_path, odd_class_path, merged_class_path = make_class_rasters(
-        merged_gdf,
-        out_dir,
-        width=meta["image_shape"][0],
-        height=meta["image_shape"][1],
-        extent=meta["extent"],
-        crs=meta["crs"],
-        class_config=class_cfg,
-    )
-
-    return {
-        "world": str(even_class_path),
-        "terrain": str(odd_class_path),
-        "climate": str(merged_class_path),
-    }
-
+# --- Raster portion of the pipeline --- #
 def extract_rasters(
-    image: Path,
+    source: Union[gpd.GeoDataFrame, Path],
     out_dir: Path,
     meta: dict,
     *,
+    add_parity: bool = True,
     even_defs: dict = configs.LAND_DEFS,
-    odd_defs: dict = configs.WATERBODY_DEFS,
+    odd_defs: dict = configs.WATER_DEFS,
 ) -> dict[str, str]:
-    """Run raster extraction only (no vector file writing).
+    """Run raster extraction for a merged vector layer or directly from an image.
 
-    This recomputes polygons from the image and builds world/terrain/climate
-    class rasters, returning a dict of raster paths.
+    This helper can be driven either by a precomputed merged GeoDataFrame
+    (typically land+water classes) or by an image path, in which case it
+    will perform vector extraction and labeling before rasterization.
+
+    It returns paths to the standard world/terrain/climate class rasters.
+    For more flexible use (custom sections, filenames, etc.), call
+    :func:`build_class_raster` directly in a loop.
     """
-    process_step(f"Starting raster extraction for {image.name}...")
-    meta["image_shape"] = detect_dimensions(image)
+    verbose = meta.get("verbose", False)
 
-    # We only need the merged GeoDataFrame; vectors are not written here.
-    _even_gdf, _odd_gdf, merged_gdf = vectorize_image_to_gdfs(
-        image,
-        meta,
-        even_defs=even_defs,
-        odd_defs=odd_defs,
-    )
+    if isinstance(source, Path):
+        image = source
+        process_step(f"Starting raster extraction from image {image.name}...")
+        # Vector extraction from image
+        even_gdf, odd_gdf = extract_vectors(image, meta, out_dir=out_dir, add_parity=add_parity)
+        even_gdf = label_vectors(even_gdf, even_defs, verbose=verbose)
+        odd_gdf = label_vectors(odd_gdf, odd_defs, verbose=verbose)
+        merged_gdf = merge_gdfs([even_gdf, odd_gdf], verbose=verbose)
+    elif isinstance(source, gpd.GeoDataFrame):
+        merged_gdf = source
+        process_step("Starting raster extraction from merged GeoDataFrame...")
+    else:
+        raise ValueError("Source must be either a Path to an image or a merged GeoDataFrame.")
 
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    return _build_class_rasters(merged_gdf, out_dir, meta)
+    process_step("Building class rasters...")
+    class_cfg = get_raster_class_config(meta)
 
+    raster_paths: dict[str, str] = {}
+    class_values = class_cfg.get("classes", {})
+    class_colors = class_cfg.get("colors", {})
+
+    for section_name, mapping in class_values.items():
+        colors = class_colors.get(section_name, {})
+        if not colors:
+            warn(f"No color mapping found for section '{section_name}'; defaulting to empty colormap.")
+
+        raster_path = build_class_raster(
+            merged_gdf,
+            out_dir,
+            width=meta["image_shape"][0],
+            height=meta["image_shape"][1],
+            extent=meta["extent"],
+            crs=meta["crs"],
+            class_mapping=mapping,
+            color_mapping=colors,
+            section=section_name,
+            class_col="class",
+        )
+        raster_paths[section_name] = str(raster_path)
+
+    return raster_paths
+
+# --- Raster portion of the pipeline is done --- #
+
+# --- Full pipeline orchestration --- #
 def extract_all(
     image: Path,
     meta: dict,
@@ -283,8 +366,6 @@ def extract_all(
     add_parity: bool = True,
     even_defs: dict = configs.LAND_DEFS,
     odd_defs: dict = configs.WATER_DEFS,
-    even_export_defs: dict = configs.LAND_EXPORT_DEFS,
-    odd_export_defs: dict = configs.WATER_EXPORT_DEFS,
 ) -> dict[str, str]:
     """
     Run full extraction and write all vector + raster products.
@@ -305,14 +386,12 @@ def extract_all(
     even_gdf, odd_gdf = extract_vectors(image, meta, out_dir=out_dir, add_parity=add_parity)
     
     even_gdf = label_vectors(even_gdf, even_defs, verbose=verbose)
-    odd_gdf = label_vectors(odd_gdf, odd_defs, verbose=verbose)
+    odd_gdf  = label_vectors(odd_gdf, odd_defs, verbose=verbose)
     
     merged_gdf = merge_gdfs([even_gdf, odd_gdf], verbose=verbose)
-    
 
+    raster_paths = extract_rasters(merged_gdf, out_dir, meta)
 
-
-    raster_paths = _build_class_rasters(merged_gdf, out_dir, meta)
-
-    # Merge vector + raster paths into a single mapping.
-    return {**vec_paths, **raster_paths}
+    # For now we only report raster outputs; vector files (even/odd) are
+    # written by extract_vectors when outputs are enabled.
+    return raster_paths

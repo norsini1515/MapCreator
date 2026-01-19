@@ -1,3 +1,20 @@
+"""
+CLI entry point for MapCreator feature extraction pipelines.
+
+commands:
+- extract-all: runs the full pipeline (image preprocessing, vector extraction, raster generation)
+- extract-image: runs only the image preprocessing step, outputs preprocessed images
+- extract-vector: runs only the vector extraction step, outputs GeoJSONs
+- extract-raster: runs only the raster generation step, outputs class rasters
+To rector:
+- recolor: utility to reapply palette from YAML to an existing class raster
+- paint: utility to burn polygons into an existing class raster as a specific class label/ID
+
+Usage examples:
+- Full pipeline with config file:
+    mapc extract-all --config path/to/config.yml
+
+"""
 # mapcreator/cli/__main__.py
 from pathlib import Path
 from typing import Optional, Dict, Any
@@ -7,10 +24,12 @@ from datetime import datetime
 # --- Typer app (root has no options) ---
 app = typer.Typer(no_args_is_help=True)
 
+
 def _load_yaml(path: Optional[Path]) -> Dict[str, Any]:
     if not path:
         return {}
     try:
+        info(f"Loading config from {path}...")
         with open(path, "r") as f:
             cfg = yaml.safe_load(f) or {}
         info(f"Using config: {path}")
@@ -26,12 +45,7 @@ def _pick(cfg: Dict[str, Any], key: str, cli_val):
     return config_val if config_val is not None else cli_val
 
 # import AFTER helpers so the module loads cleanly
-from mapcreator.features.tracing.pipeline import (
-    extract_all,
-    extract_image,
-    extract_vectors,
-    extract_rasters,
-)
+from mapcreator.features.tracing import pipeline as tracing_pipeline
 from mapcreator.globals.logutil import Logger, info, warn, error, success, process_step, setting_config
 from mapcreator.globals import directories, configs
 from mapcreator.features.tracing.reclass import burn_polygons_into_class_raster, apply_palette_from_yaml
@@ -125,10 +139,6 @@ def extract_all(
     xmax: Optional[float] = typer.Option(None, "--xmax", help="Extent max X", rich_help_panel="World grid"),
     ymax: Optional[float] = typer.Option(None, "--ymax", help="Extent max Y", rich_help_panel="World grid"),
     crs:  Optional[str]  = typer.Option(None, "--crs",  help="Output CRS (e.g., 'EPSG:3857')", rich_help_panel="World grid"),
-    # Image Preprocessing
-    # invert:     Optional[bool]  = typer.Option(None, "--invert",     help="Invert after binarize", rich_help_panel="Image Preprocessing"),
-    # flood_fill: Optional[bool]  = typer.Option(None, "--flood-fill", help="Flood-fill open regions", rich_help_panel="Image Preprocessing"),
-    # contrast:   Optional[float] = typer.Option(None, "--contrast",   help="Contrast factor", rich_help_panel="Image Preprocessing"),
     # Geometry filters
     min_area:   Optional[float] = typer.Option(None, "--min-area",   help="Min polygon area (pre-affine)", rich_help_panel="Geometry filters"),
     min_points: Optional[int]   = typer.Option(None, "--min-points", help="Min ring vertices", rich_help_panel="Geometry filters"),
@@ -163,9 +173,6 @@ def extract_all(
         xmax=xmax,
         ymax=ymax,
         crs=crs,
-        # invert=invert,
-        # flood_fill=flood_fill,
-        # contrast=contrast,
         min_area=min_area,
         min_points=min_points,
     )
@@ -187,7 +194,9 @@ def extract_all(
         raise typer.Exit(code=2)
 
     out.mkdir(parents=True, exist_ok=True)
-    results = extract_all(img, out, meta)
+
+    # Run full image -> vector -> raster pipeline
+    results = tracing_pipeline.extract_all(image=img, meta=meta, out_dir=out)
     for k, v in results.items():
         info(f"{k}: {v}")
     success(f"Extraction completed successfully!, Outputs in: {out}")
@@ -239,10 +248,9 @@ def extract_image(
 
     out.mkdir(parents=True, exist_ok=True)
 
-    results = extract_image(img, out, meta)
-    for k, v in results.items():
-        if v:
-            info(f"{k}: {v}")
+    # Preprocess image and write diagnostic PNGs; return value is the land mask
+    land_mask = tracing_pipeline.extract_image(image=img, meta=meta, out_dir=out)
+    info(f"Extracted land mask with shape {land_mask.shape} into {out}")
 
     success("Image extraction completed successfully!")
 
@@ -314,7 +322,13 @@ def extract_vector(
 
     out.mkdir(parents=True, exist_ok=True)
 
-    _even_gdf, _odd_gdf, _merged_gdf, results = extract_vectors(img, out, meta)
+    # Run vector extraction; files are written when verbose/out_dir are set
+    _even_gdf, _odd_gdf = tracing_pipeline.extract_vectors(img, meta, out_dir=out)
+
+    results = {
+        "even_geojson": out / "even.geojson",
+        "odd_geojson": out / "odd.geojson",
+    }
     for k, v in results.items():
         info(f"{k}: {v}")
 
@@ -389,7 +403,8 @@ def extract_raster(
 
     out.mkdir(parents=True, exist_ok=True)
 
-    results = extract_rasters(img, out, meta)
+    # Build class rasters from image path using the tracing pipeline
+    results = tracing_pipeline.extract_rasters(img, out, meta)
     for k, v in results.items():
         info(f"{k}: {v}")
 

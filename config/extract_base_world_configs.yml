@@ -16,4 +16,4 @@ min_area: 5.0
 min_points: 3
 log_file_name: "extract_all_{now:%Y-%m-%d_%H-%M-%S}"
 verbose: True
-compute_extent_polygons: True #true by default but specified here for clarity
+compute_extent_polygons: True #true by default but specified here for clarity, if false no ocean in the base case.

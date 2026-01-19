@@ -23,12 +23,12 @@ from shapely.validation import explain_validity
 
 import geopandas as gpd
 
-def _extent_polygon(meta: dict):
+def _extent_polygon(width: int, height: int) -> Polygon:
     # Build extent in PIXEL space (0..width, 0..height). We transform to map coords later.
     process_step("Building extent polygon in pixel space")
-    setting_config(f"Extent polygon bounds: (0, 0, {meta['width']}, {meta['height']})")
+    setting_config(f"Extent polygon bounds: (0, 0, {width}, {height})")
 
-    return box(0, 0, meta["width"], meta["height"])
+    return box(0, 0, width, height)
 
 def _is_shell_of_parity(depth_val: int, build_even: bool) -> bool:
     """True if contour with depth_val should be treated as a shell for this build."""
@@ -238,7 +238,8 @@ def compute_extent_polygon(
         odd_polys = [p for p, _ in odd_polys]
 
     # Build extent polygon in pixel space (0..width, 0..height)
-    extent_poly = _extent_polygon(meta)
+    width, height = meta.get("image_shape")
+    extent_poly = _extent_polygon(width, height)
 
     subtract_geoms = []
     # Add all land and inland water polygons to the subtraction list

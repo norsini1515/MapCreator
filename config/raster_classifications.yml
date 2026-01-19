@@ -1,3 +1,11 @@
+# Raster classifications and color mappings for different types of rasters (e.g., terrain, climate).
+# This YAML file defines the classes and their corresponding colors for various raster types used in the MapCreator application.
+# The structure allows for easy extension by adding new raster types and their classifications/colors as needed.
+
+# class names and their corresponding integer values for different raster types
+# currently base is a single mapping to water and land and serves for more overview rasters, 
+# while terrain and climate are more detailed and can be used for specific thematic maps.
+
 classes:
   base:
     waterbody: 0
@@ -7,13 +15,13 @@ classes:
     waterbody: 0
     land: 1
     # add: mountain: 10, hill: 11, plateau: 12, valley: 13, ...
+    
   climate:
     waterbody: 0
     land: 1
     # add Koppen-like: Af: 20, Am: 21, Aw: 22, BWh: 30, BWk: 31, BSh: 32, BSk: 33, ...
 
 colors:
-  
   base:
     0: "#8BBBEB"   # waterbody/ocean
     1: "#DDFFBE"   # land
