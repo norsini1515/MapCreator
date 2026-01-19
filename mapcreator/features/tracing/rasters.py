@@ -55,11 +55,11 @@ def get_default_raster_class_config() -> dict:
 def get_raster_class_config(meta: dict) -> dict:
     """Internal helper to load raster class configuration from YAML path specified in meta."""
     process_step("Loading raster class configurations...")
-    cfg_path = meta.get("raster_class_config_path")
+    cfg_path = meta.get("class_config_path")
     
     if cfg_path is None:
         warn("Raster class config path not specified in meta; using default config.")
-        default_cfg_path = Path(__file__).resolve().parents[3] / "config" / "raster_classifications.yml"
+        default_cfg_path = Path(__file__).resolve().parents[3] / "config" / "class_configurations.yml"
         if default_cfg_path.exists():
             cfg_path = str(default_cfg_path.as_posix())
             info(f"Using default raster class config at {cfg_path}")

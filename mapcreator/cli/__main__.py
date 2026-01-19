@@ -66,7 +66,7 @@ def _resolve_log_path() -> Path:
     return base / f"{LOG_FILE_NAME}{datetime.now():%Y%m%d_%H%M%S}.log"
 
 # --- Helper: unified config loading ---
-def load_config(cfg: Dict[str, Any], **cli_values) -> Dict[str, Any]:
+def load_config(cfg: Dict[str, Any], **cli_kwargs) -> Dict[str, Any]:
     """Build the unified configuration metadata dict.
 
     This mirrors the logic previously embedded in ``extract_all`` so other
@@ -78,7 +78,7 @@ def load_config(cfg: Dict[str, Any], **cli_values) -> Dict[str, Any]:
     ----------
     cfg : Dict[str, Any]
         Parsed YAML configuration (may be empty).
-    **cli_values : Any
+    **cli_kwargs : Any
         Keyword arguments representing CLI-provided values. Expected keys:
         verbose, image, out_dir, width, height, xmin, ymin, xmax, ymax, crs,
         invert, flood_fill, contrast, min_area, min_points, log_file.
@@ -93,24 +93,25 @@ def load_config(cfg: Dict[str, Any], **cli_values) -> Dict[str, Any]:
         return config_val if config_val is not None else cli_val
 
     meta = {
-        "log_file": pick("log_file", cli_values.get("log_file")),
-        "verbose": pick("verbose", cli_values.get("verbose")) or False,
-        "image": pick("image", cli_values.get("image")) or None,
-        "out_dir": pick("out_dir", cli_values.get("out_dir")) or None,
-        # "width": pick("width", cli_values.get("width")) or 1000,
-        # "height": pick("height", cli_values.get("height")) or 1000,
+        #Logging related configs
+        "log_file": pick("log_file", cli_kwargs.get("log_file")),
+        "verbose": pick("verbose", cli_kwargs.get("verbose")) or False,
+        
+        #Image/Pipeline processing configs
+        "image": pick("image", cli_kwargs.get("image")) or None,
+        "out_dir": pick("out_dir", cli_kwargs.get("out_dir")) or None,
+        "class_config_path": pick("class_config_path", cli_kwargs.get("class_config_path")),
+        
+        #World grid and geometry filter configs
         "extent": dict(
-            xmin=pick("xmin", cli_values.get("xmin")) or 0.0,
-            ymin=pick("ymin", cli_values.get("ymin")) or 0.0,
-            xmax=pick("xmax", cli_values.get("xmax")) or 3500.0,
-            ymax=pick("ymax", cli_values.get("ymax")) or 3500.0,
+            xmin=pick("xmin", cli_kwargs.get("xmin")) or 0.0,
+            ymin=pick("ymin", cli_kwargs.get("ymin")) or 0.0,
+            xmax=pick("xmax", cli_kwargs.get("xmax")) or 3500.0,
+            ymax=pick("ymax", cli_kwargs.get("ymax")) or 3500.0,
         ),
-        "crs": pick("crs", cli_values.get("crs")) or "EPSG:3857",
-        # "invert": pick("invert", cli_values.get("invert")) or False,
-        # "flood_fill": pick("flood_fill", cli_values.get("flood_fill")) or False,
-        # "contrast": pick("contrast", cli_values.get("contrast")) or 2.0,
-        "min_area": pick("min_area", cli_values.get("min_area")) or 5.0,
-        "min_points": pick("min_points", cli_values.get("min_points")) or 3,
+        "crs": pick("crs", cli_kwargs.get("crs")) or "EPSG:3857",
+        "min_area": pick("min_area", cli_kwargs.get("min_area")) or 5.0,
+        "min_points": pick("min_points", cli_kwargs.get("min_points")) or 3,
     }
     return meta
 

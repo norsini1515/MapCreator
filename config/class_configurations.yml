@@ -6,26 +6,36 @@
 # currently base is a single mapping to water and land and serves for more overview rasters, 
 # while terrain and climate are more detailed and can be used for specific thematic maps.
 
+labels:
+  base:
+    waterbody: "Waterbody"
+    land: "Land"
+  terrain:
+    waterbody: "Waterbody"
+    land: "Land"
+    # add: mountain: "Mountain", hill: "Hill", plateau: "Plateau", valley: "Valley", ...
+  climate:
+    waterbody: "Waterbody"
+    land: "Land"
+    # add Koppen-like: Af: "Tropical rainforest climate", Am: "Tropical monsoon climate", Aw: "Tropical savanna climate", BWh: "Hot desert climate", BWk: "Cold desert climate", BSh: "Hot semi-arid climate", BSk: "Cold semi-arid climate", ...
+
 classes:
+# integer values for each class in the rasters, used for classification and processing
   base:
     waterbody: 0
     land: 1
-
   terrain:
     waterbody: 0
     land: 1
     # add: mountain: 10, hill: 11, plateau: 12, valley: 13, ...
-    
   climate:
     waterbody: 0
     land: 1
     # add Koppen-like: Af: 20, Am: 21, Aw: 22, BWh: 30, BWk: 31, BSh: 32, BSk: 33, ...
-
 colors:
   base:
     0: "#8BBBEB"   # waterbody/ocean
     1: "#DDFFBE"   # land
-  #
   terrain:
     0: "#8BBBEB"
     1: "#000000"
