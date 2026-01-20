@@ -26,11 +26,12 @@ WATER_EXPORT_DEFS = {"file_name": "water.geojson"}
 #---------------------
 # CONFIGURATION FILES
 #---------------------
-IMAGE_TRACING_EXTRACT_CONFIGS_NAME = 'extract_base_world_configs.yml'
+IMAGE_TRACING_EXTRACT_CONFIGS_FILENAME = 'extract_base_world_configs.yml'
+CLASS_CONFIGURATIONS_FILENAME = 'class_configurations.yml'
 
 #--------------------
 # Map Export Names
 #--------------------
-LAND_TRACING_EXTRACT_NAME = "land.shp"
-WATER_TRACING_EXTRACT_NAME = "waterbodies.shp"
+# LAND_TRACING_EXTRACT_NAME = "land.shp"
+# WATER_TRACING_EXTRACT_NAME = "waterbodies.shp"
 MERGED_TRACING_EXTRACT_NAME = "merged_base_geography.shp"

@@ -24,20 +24,6 @@ from datetime import datetime
 # --- Typer app (root has no options) ---
 app = typer.Typer(no_args_is_help=True)
 
-
-def _load_yaml(path: Optional[Path]) -> Dict[str, Any]:
-    if not path:
-        return {}
-    try:
-        info(f"Loading config from {path}...")
-        with open(path, "r") as f:
-            cfg = yaml.safe_load(f) or {}
-        info(f"Using config: {path}")
-        return cfg
-    except FileNotFoundError:
-        error(f"(config not found at {path}; using flags/defaults)")
-        return {}
-
 def _pick(cfg: Dict[str, Any], key: str, cli_val):
     config_val = cfg.get(key)
     if key=='verbose':
@@ -48,6 +34,7 @@ def _pick(cfg: Dict[str, Any], key: str, cli_val):
 from mapcreator.features.tracing import pipeline as tracing_pipeline
 from mapcreator.globals.logutil import Logger, info, warn, error, success, process_step, setting_config
 from mapcreator.globals import directories, configs
+from mapcreator.globals.config_models import ExtractConfig, read_config_file
 from mapcreator.features.tracing.reclass import burn_polygons_into_class_raster, apply_palette_from_yaml
 
 # DEFAULT_CONFIG_FILE_PATH
@@ -66,7 +53,7 @@ def _resolve_log_path() -> Path:
     return base / f"{LOG_FILE_NAME}{datetime.now():%Y%m%d_%H%M%S}.log"
 
 # --- Helper: unified config loading ---
-def load_config(cfg: Dict[str, Any], **cli_kwargs) -> Dict[str, Any]:
+def load_config(cfg: ExtractConfig, **cli_kwargs) -> Dict[str, Any]:
     """Build the unified configuration metadata dict.
 
     This mirrors the logic previously embedded in ``extract_all`` so other
@@ -89,7 +76,7 @@ def load_config(cfg: Dict[str, Any], **cli_kwargs) -> Dict[str, Any]:
         Normalized configuration dictionary used by processing pipelines.
     """
     def pick(key: str, cli_val):
-        config_val = cfg.get(key)
+        config_val = getattr(cfg, key, None)
         return config_val if config_val is not None else cli_val
 
     meta = {
@@ -161,33 +148,35 @@ def extract_all(
     # Set up the logging configuration
     log_path = _resolve_log_path()
     logger = Logger(logfile_path=log_path)
-    # load configurations
-    cfg = _load_yaml(config)
-    meta = load_config(
-        cfg,
-        log_file=log_path,
-        verbose=verbose,
-        image=image,
-        out_dir=out_dir,
-        xmin=xmin,
-        ymin=ymin,
-        xmax=xmax,
-        ymax=ymax,
-        crs=crs,
-        min_area=min_area,
-        min_points=min_points,
-    )
+
+    # Load YAML into a typed ExtractConfig, then merge with CLI flags
+    tracing_cfg = read_config_file(config, kind="extract")  # type: ignore[arg-type]
+    info("override config with CLI args where provided...")
+    tracing_cfg.image = image or tracing_cfg.image
+    tracing_cfg.out_dir = out_dir or tracing_cfg.out_dir
+    
+    tracing_cfg.xmin = xmin if xmin is not None else tracing_cfg.xmin
+    tracing_cfg.ymin = ymin if ymin is not None else tracing_cfg.ymin
+    tracing_cfg.xmax = xmax if xmax is not None else tracing_cfg.xmax
+    tracing_cfg.ymax = ymax if ymax is not None else tracing_cfg.ymax
+    
+    tracing_cfg.crs = crs or tracing_cfg.crs
+    tracing_cfg.min_area = min_area if min_area is not None else tracing_cfg.min_area
+    tracing_cfg.min_points = min_points if min_points is not None else tracing_cfg.min_points
+    tracing_cfg.verbose = verbose if verbose is not None else tracing_cfg.verbose
+
+
     info("Resolved configuration:")
-    for k, v in meta.items():
+    for k, v in tracing_cfg.items():
         setting_config(f"  {k}: {v}")
 
     # Resolve image and out dir from meta (already merged)
-    img = Path(meta["image"]) if meta["image"] else None
-    out = Path(meta["out_dir"]) if meta["out_dir"] else None
+    img = Path(tracing_cfg.image) if tracing_cfg.image else None
+    out = Path(tracing_cfg.out_dir) if tracing_cfg.out_dir else None
 
     if dry_run:
         info("Resolved configuration:")
-        for k, v in meta.items(): setting_config(f"  {k}: {v}")
+        for k, v in tracing_cfg.__dict__.items(): setting_config(f"  {k}: {v}")
         raise typer.Exit()
 
     if not img or not out:
@@ -197,7 +186,7 @@ def extract_all(
     out.mkdir(parents=True, exist_ok=True)
 
     # Run full image -> vector -> raster pipeline
-    results = tracing_pipeline.extract_all(image=img, meta=meta, out_dir=out)
+    results = tracing_pipeline.extract_all(image=img, tracing_cfg=tracing_cfg, out_dir=out)
     for k, v in results.items():
         info(f"{k}: {v}")
     success(f"Extraction completed successfully!, Outputs in: {out}")
@@ -223,25 +212,12 @@ def extract_image(
     It writes a centerline outline PNG and a filled land-mask PNG.
     """
 
-    # Load configuration
-    cfg = _load_yaml(config)
-    meta = load_config(
-        cfg,
-        log_file=None,
-        verbose=cfg.get("verbose", False),
-        image=cfg.get("image"),
-        out_dir=cfg.get("out_dir"),
-        xmin=cfg.get("extent", {}).get("xmin"),
-        ymin=cfg.get("extent", {}).get("ymin"),
-        xmax=cfg.get("extent", {}).get("xmax"),
-        ymax=cfg.get("extent", {}).get("ymax"),
-        crs=cfg.get("crs"),
-        min_area=cfg.get("min_area"),
-        min_points=cfg.get("min_points"),
-    )
+    # Load configuration from YAML into ExtractConfig, then normalize
+    tracing_cfg = read_config_file(config, kind="extract")  # type: ignore[arg-type]
+   
 
-    img = Path(meta["image"]) if meta.get("image") else None
-    out = Path(meta["out_dir"]) if meta.get("out_dir") else None
+    img = Path(tracing_cfg.image) if tracing_cfg.image else None
+    out = Path(tracing_cfg.out_dir) if tracing_cfg.out_dir else None
 
     if not img or not out:
         error("image and out_dir are required (via YAML for extract-image).")
@@ -250,7 +226,7 @@ def extract_image(
     out.mkdir(parents=True, exist_ok=True)
 
     # Preprocess image and write diagnostic PNGs; return value is the land mask
-    land_mask = tracing_pipeline.extract_image(image=img, meta=meta, out_dir=out)
+    land_mask = tracing_pipeline.extract_image(image=img, tracing_cfg=tracing_cfg, out_dir=out)
     info(f"Extracted land mask with shape {land_mask.shape} into {out}")
 
     success("Image extraction completed successfully!")
@@ -289,9 +265,9 @@ def extract_vector(
     log_path = _resolve_log_path()
     logger = Logger(logfile_path=log_path)
 
-    cfg = _load_yaml(config)
+    tracing_cfg = read_config_file(config, kind="extract")  # type: ignore[arg-type]
     meta = load_config(
-        cfg,
+        cfg_obj,
         log_file=log_path,
         verbose=verbose,
         image=image,
@@ -370,9 +346,9 @@ def extract_raster(
     log_path = _resolve_log_path()
     logger = Logger(logfile_path=log_path)
 
-    cfg = _load_yaml(config)
+    cfg_obj = read_config_file(config, kind="extract")  # type: ignore[arg-type]
     meta = load_config(
-        cfg,
+        cfg_obj,
         log_file=log_path,
         verbose=verbose,
         image=image,
@@ -423,7 +399,18 @@ def recolor(
     Example call:
         mapcreator recolor path/to/terrain_class_map.tif --section terrain --config path/to/raster_classifications.yml
     """
-    cfg = _load_yaml(config)
+    # For recolor we still want a raw YAML dict, not ExtractConfig
+    cfg: Dict[str, Any]
+    if not config:
+        cfg = {}
+    else:
+        try:
+            info(f"Loading config from {config}...")
+            with config.open("r", encoding="utf-8") as f:
+                cfg = yaml.safe_load(f) or {}
+        except FileNotFoundError:
+            error(f"(config not found at {config}; using defaults where possible)")
+            cfg = {}
     apply_palette_from_yaml(raster, cfg, section)
 
 @app.command("paint")
@@ -437,7 +424,14 @@ def paint(
     overwrite: bool = typer.Option(False, "--overwrite", help="Edit raster in place."),
 ):
     """Burn polygons into an existing class raster as a specific class label/ID."""
-    cfg = _load_yaml(config)
+    # For paint we still want a raw YAML dict, not ExtractConfig
+    try:
+        info(f"Loading config from {config}...")
+        with config.open("r", encoding="utf-8") as f:
+            cfg: Dict[str, Any] = yaml.safe_load(f) or {}
+    except FileNotFoundError:
+        error(f"(config not found at {config}; using defaults where possible)")
+        cfg = {}
     burn_polygons_into_class_raster(
         raster_path=raster,
         polygons_path=polygons,

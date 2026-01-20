@@ -49,14 +49,13 @@ from .polygonize import extract_polygons_from_binary, polygons_to_gdf
 from .geo_transform import affine_from_meta
 from .exporters import export_gdf
 from .gdf_tools import merge_gdfs
-from .rasters import build_class_raster, get_raster_class_config
-import yaml
-from pathlib import Path as _Path
+from .rasters import build_class_raster
 
 from mapcreator.globals.logutil import info, process_step, error, setting_config, success, warn
 from mapcreator.globals.image_utility import detect_dimensions
 from mapcreator import directories as _dirs
 from mapcreator.globals import configs
+from mapcreator.globals.config_models import ClassConfig, ExtractConfig, read_config_file
 
 def _validate_output_dir_meta(
         meta: dict, 
@@ -289,15 +288,56 @@ def label_vectors(
 # --- Vector portion of the pipeline is done ---#
 
 
+"""Class configuration helpers."""
+
+
+def load_class_config(meta: ExtractConfig) -> ClassConfig:
+    """Load class/label/color configuration using path from ``meta``.
+
+    This now delegates to :func:`read_config_file` so that callers
+    receive a typed :class:`ClassConfig` instance instead of a raw
+    dictionary.
+    """
+    process_step("Loading class configuration (labels/classes/colors)...")
+
+    cfg_path = meta.class_config_path
+    return read_config_file(cfg_path, kind="class")  # type: ignore[return-value]
+
+
+def get_even_odd_configs(class_cfg: ClassConfig) -> tuple[dict, dict]:
+    """Derive even/odd vector label definitions from config ``labels``.
+
+    Expects ``labels.base.even`` and ``labels.base.odd`` to contain the
+    class keys to use for the even/odd polygon sets. If these are missing,
+    falls back to :mod:`configs` LAND/WATER defaults.
+    """
+ 
+    labels = class_cfg.labels or {}
+    base_labels = labels.get("base", {}) if isinstance(labels, dict) else {}
+
+    even_key = base_labels.get("even")
+    odd_key = base_labels.get("odd")
+
+    if not even_key or not odd_key:
+        warn("labels.base.even/odd not fully specified; falling back to configs.LAND_DEFS/WATER_DEFS.")
+        return configs.LAND_DEFS, configs.WATER_DEFS
+
+    even_defs = {"class": even_key}
+    odd_defs = {"class": odd_key}
+
+    info(f"Using config-defined vector classes: even -> '{even_key}', odd -> '{odd_key}'.")
+    return even_defs, odd_defs
+
 # --- Raster portion of the pipeline --- #
 def extract_rasters(
     source: Union[gpd.GeoDataFrame, Path],
     out_dir: Path,
     meta: dict,
+    class_config: ClassConfig | None = None,
+    even_cfg: dict | None = None,
+    odd_cfg: dict | None = None,
     *,
     add_parity: bool = True,
-    even_defs: dict = configs.LAND_DEFS,
-    odd_defs: dict = configs.WATER_DEFS,
 ) -> dict[str, str]:
     """Run raster extraction for a merged vector layer or directly from an image.
 
@@ -311,13 +351,18 @@ def extract_rasters(
     """
     verbose = meta.get("verbose", False)
 
+    # Load class configuration once for this call
+    if class_config is None:
+        class_config = load_class_config(meta)
+
     if isinstance(source, Path):
         image = source
         process_step(f"Starting raster extraction from image {image.name}...")
         # Vector extraction from image
+        even_cfg, odd_cfg = get_even_odd_configs(class_config)
         even_gdf, odd_gdf = extract_vectors(image, meta, out_dir=out_dir, add_parity=add_parity)
-        even_gdf = label_vectors(even_gdf, even_defs, verbose=verbose)
-        odd_gdf = label_vectors(odd_gdf, odd_defs, verbose=verbose)
+        even_gdf = label_vectors(even_gdf, even_cfg, verbose=verbose)
+        odd_gdf = label_vectors(odd_gdf, odd_cfg, verbose=verbose)
         merged_gdf = merge_gdfs([even_gdf, odd_gdf], verbose=verbose)
     elif isinstance(source, gpd.GeoDataFrame):
         merged_gdf = source
@@ -328,11 +373,9 @@ def extract_rasters(
     out_dir.mkdir(parents=True, exist_ok=True)
 
     process_step("Building class rasters...")
-    class_cfg = get_raster_class_config(meta)
-
     raster_paths: dict[str, str] = {}
-    class_values = class_cfg.get("classes", {})
-    class_colors = class_cfg.get("colors", {})
+    class_values = class_config.classes or {}
+    class_colors = class_config.colors or {}
 
     for section_name, mapping in class_values.items():
         colors = class_colors.get(section_name, {})
@@ -364,8 +407,6 @@ def extract_all(
     *,
     out_dir: Path|None = None,
     add_parity: bool = True,
-    even_defs: dict = configs.LAND_DEFS,
-    odd_defs: dict = configs.WATER_DEFS,
 ) -> dict[str, str]:
     """
     Run full extraction and write all vector + raster products.
@@ -383,14 +424,18 @@ def extract_all(
     if write_outputs:
         info(f"Output files will be written to {out_dir}")
 
+    # Load configuration and derive default even/odd defs if not provided
+    class_cfg = load_class_config(meta)
+    even_cfg, odd_cfg = get_even_odd_configs(class_cfg)
+
     even_gdf, odd_gdf = extract_vectors(image, meta, out_dir=out_dir, add_parity=add_parity)
-    
-    even_gdf = label_vectors(even_gdf, even_defs, verbose=verbose)
-    odd_gdf  = label_vectors(odd_gdf, odd_defs, verbose=verbose)
+
+    even_gdf = label_vectors(even_gdf, even_cfg, verbose=verbose)
+    odd_gdf  = label_vectors(odd_gdf, odd_cfg, verbose=verbose)
     
     merged_gdf = merge_gdfs([even_gdf, odd_gdf], verbose=verbose)
 
-    raster_paths = extract_rasters(merged_gdf, out_dir, meta)
+    raster_paths = extract_rasters(merged_gdf, out_dir, meta, class_config=class_cfg, even_cfg=even_cfg, odd_cfg=odd_cfg)
 
     # For now we only report raster outputs; vector files (even/odd) are
     # written by extract_vectors when outputs are enabled.

@@ -13,7 +13,6 @@ from rasterio.transform import from_bounds
 from typing import Dict, Tuple
 from rasterio.features import rasterize
 from pathlib import Path
-import yaml
 import geopandas as gpd
 
 #package imports
@@ -52,33 +51,6 @@ def get_default_raster_class_config() -> dict:
     }
 
 #-- RASTERIZATION HELPERS --#
-def get_raster_class_config(meta: dict) -> dict:
-    """Internal helper to load raster class configuration from YAML path specified in meta."""
-    process_step("Loading raster class configurations...")
-    cfg_path = meta.get("class_config_path")
-    
-    if cfg_path is None:
-        warn("Raster class config path not specified in meta; using default config.")
-        default_cfg_path = Path(__file__).resolve().parents[3] / "config" / "class_configurations.yml"
-        if default_cfg_path.exists():
-            cfg_path = str(default_cfg_path.as_posix())
-            info(f"Using default raster class config at {cfg_path}")
-        else:
-            cfg_path = None
-            error(f"Default raster class config not found at {default_cfg_path}; proceeding with empty config.")
-    try:
-        with open(cfg_path, "r", encoding="utf-8") as f:
-            class_cfg = yaml.safe_load(f) or {}
-    except Exception as e:
-        error(f"Failed to load raster classifications YAML at {cfg_path}: {e}")
-        class_cfg = {}
-
-    #garantee expected structure
-    class_cfg.setdefault("classes", {})
-    class_cfg.setdefault("colors", {})
-    
-    return class_cfg
-
 def _transform_from_extent(width: int, height: int, extent: dict):
     """Build an affine transform from extent bounds and array shape.
 
