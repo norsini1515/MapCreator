@@ -24,11 +24,11 @@ from datetime import datetime
 # --- Typer app (root has no options) ---
 app = typer.Typer(no_args_is_help=True)
 
-def _pick(cfg: Dict[str, Any], key: str, cli_val):
-    config_val = cfg.get(key)
-    if key=='verbose':
-        print(f"pick {key}: cli_val={cli_val}, cfg.get={config_val}")
-    return config_val if config_val is not None else cli_val
+# def _pick(cfg: Dict[str, Any], key: str, cli_val):
+#     config_val = cfg.get(key)
+#     if key=='verbose':
+#         print(f"pick {key}: cli_val={cli_val}, cfg.get={config_val}")
+#     return config_val if config_val is not None else cli_val
 
 # import AFTER helpers so the module loads cleanly
 from mapcreator.features.tracing import pipeline as tracing_pipeline
@@ -51,56 +51,6 @@ def _resolve_log_path() -> Path:
     base = directories.LOGS_DIR
     base.mkdir(parents=True, exist_ok=True)
     return base / f"{LOG_FILE_NAME}{datetime.now():%Y%m%d_%H%M%S}.log"
-
-# --- Helper: unified config loading ---
-def load_config(cfg: ExtractConfig, **cli_kwargs) -> Dict[str, Any]:
-    """Build the unified configuration metadata dict.
-
-    This mirrors the logic previously embedded in ``extract_all`` so other
-    commands can reuse it. Precedence currently matches existing behavior:
-    if a key exists in the YAML it overrides the CLI value; otherwise the
-    CLI value (or fallback default) is used.
-
-    Parameters
-    ----------
-    cfg : Dict[str, Any]
-        Parsed YAML configuration (may be empty).
-    **cli_kwargs : Any
-        Keyword arguments representing CLI-provided values. Expected keys:
-        verbose, image, out_dir, width, height, xmin, ymin, xmax, ymax, crs,
-        invert, flood_fill, contrast, min_area, min_points, log_file.
-
-    Returns
-    -------
-    Dict[str, Any]
-        Normalized configuration dictionary used by processing pipelines.
-    """
-    def pick(key: str, cli_val):
-        config_val = getattr(cfg, key, None)
-        return config_val if config_val is not None else cli_val
-
-    meta = {
-        #Logging related configs
-        "log_file": pick("log_file", cli_kwargs.get("log_file")),
-        "verbose": pick("verbose", cli_kwargs.get("verbose")) or False,
-        
-        #Image/Pipeline processing configs
-        "image": pick("image", cli_kwargs.get("image")) or None,
-        "out_dir": pick("out_dir", cli_kwargs.get("out_dir")) or None,
-        "class_config_path": pick("class_config_path", cli_kwargs.get("class_config_path")),
-        
-        #World grid and geometry filter configs
-        "extent": dict(
-            xmin=pick("xmin", cli_kwargs.get("xmin")) or 0.0,
-            ymin=pick("ymin", cli_kwargs.get("ymin")) or 0.0,
-            xmax=pick("xmax", cli_kwargs.get("xmax")) or 3500.0,
-            ymax=pick("ymax", cli_kwargs.get("ymax")) or 3500.0,
-        ),
-        "crs": pick("crs", cli_kwargs.get("crs")) or "EPSG:3857",
-        "min_area": pick("min_area", cli_kwargs.get("min_area")) or 5.0,
-        "min_points": pick("min_points", cli_kwargs.get("min_points")) or 3,
-    }
-    return meta
 
 # --- SUBCOMMAND ---
 @app.command("extract-all")
@@ -165,10 +115,10 @@ def extract_all(
     tracing_cfg.min_points = min_points if min_points is not None else tracing_cfg.min_points
     tracing_cfg.verbose = verbose if verbose is not None else tracing_cfg.verbose
 
-
-    info("Resolved configuration:")
-    for k, v in tracing_cfg.items():
-        setting_config(f"  {k}: {v}")
+    if tracing_cfg.verbose:
+        info("Resolved configuration:")
+        for k, v in tracing_cfg.__dict__.items():
+            setting_config(f"  {k}: {v}")
 
     # Resolve image and out dir from meta (already merged)
     img = Path(tracing_cfg.image) if tracing_cfg.image else None

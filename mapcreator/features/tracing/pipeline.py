@@ -86,7 +86,7 @@ def _validate_output_dir_meta(
 # --- Image preprocessing portion of the pipeline --- #
 def extract_image(
     image: Path,
-    meta: dict,
+    tracing_cfg: ExtractConfig,
     *,
     out_dir: Path = None,
     outline_suffix: str = "_outline",
@@ -151,7 +151,7 @@ def extract_image(
 # --- Vector portion of the pipeline --- #
 def extract_vectors(
         img: Union[np.ndarray, Path], #either a mask array or a path to an image
-        meta: dict,
+        tracing_cfg: ExtractConfig,
         *,
         out_dir: Path = None,
         add_parity: bool = True,
@@ -208,7 +208,7 @@ def extract_vectors(
     if image is not None:
         # Step 1: Process image to centerline outline and filled land mask
         process_step("Processing image to outline + filled land mask...")
-        land_mask = extract_image(image, meta=meta)
+        land_mask = extract_image(image, meta)
         bin_img = land_mask
     
     # Step 2: Extract the even and odd contours from the binary image
@@ -332,7 +332,7 @@ def get_even_odd_configs(class_cfg: ClassConfig) -> tuple[dict, dict]:
 def extract_rasters(
     source: Union[gpd.GeoDataFrame, Path],
     out_dir: Path,
-    meta: dict,
+    tracing_cfg,
     class_config: ClassConfig | None = None,
     even_cfg: dict | None = None,
     odd_cfg: dict | None = None,
@@ -353,7 +353,7 @@ def extract_rasters(
 
     # Load class configuration once for this call
     if class_config is None:
-        class_config = load_class_config(meta)
+        class_config = load_class_config(tracing_cfg)
 
     if isinstance(source, Path):
         image = source
@@ -403,7 +403,7 @@ def extract_rasters(
 # --- Full pipeline orchestration --- #
 def extract_all(
     image: Path,
-    meta: dict,
+    tracing_cfg: ExtractConfig,
     *,
     out_dir: Path|None = None,
     add_parity: bool = True,
@@ -425,7 +425,7 @@ def extract_all(
         info(f"Output files will be written to {out_dir}")
 
     # Load configuration and derive default even/odd defs if not provided
-    class_cfg = load_class_config(meta)
+    class_cfg = load_class_config(tracing_cfg)
     even_cfg, odd_cfg = get_even_odd_configs(class_cfg)
 
     even_gdf, odd_gdf = extract_vectors(image, meta, out_dir=out_dir, add_parity=add_parity)
