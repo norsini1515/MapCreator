@@ -20,7 +20,7 @@ Invalid rings are repaired via buffer(0). Min filters applied by points and area
 import cv2
 import numpy as np
 from dataclasses import dataclass
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Any, cast
 
 __all__ = [
     "ContourTree",
@@ -113,10 +113,10 @@ def extract_contour_tree(mask: np.ndarray, verbose: bool = False) -> ContourTree
     # OpenCV 3: returns (image, contours, hierarchy)
     # OpenCV 4: returns (contours, hierarchy)
     fc_result = cv2.findContours(bin_img, cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE)
-    if len(fc_result) == 3:
-        _, contours, hierarchy = fc_result
+    if isinstance(fc_result, tuple) and len(fc_result) == 3:
+        _, contours, hierarchy = cast(Tuple[Any, List[Contour], Optional[np.ndarray]], fc_result)
     else:
-        contours, hierarchy = fc_result
+        contours, hierarchy = cast(Tuple[List[Contour], Optional[np.ndarray]], fc_result)
 
     # No contours found
     if hierarchy is None or len(contours) == 0:
@@ -144,12 +144,13 @@ def _plot_contour_tree(tree: ContourTree, ax=None):
     """Visualize the contour tree over a blank canvas, color-coded by depth."""
     import matplotlib.pyplot as plt
     import matplotlib.cm as cm
+    from matplotlib.colors import Normalize
 
     if ax is None:
         fig, ax = plt.subplots()
 
     max_depth = max(tree.depth) if tree.depth else 0
-    norm = plt.Normalize(vmin=0, vmax=max_depth)
+    norm = Normalize(vmin=0, vmax=max_depth)
     cmap = cm.get_cmap("viridis", max_depth + 1)
 
     for i, cnt in enumerate(tree.contours):

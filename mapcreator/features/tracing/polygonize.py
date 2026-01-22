@@ -154,7 +154,7 @@ def build_polygons_from_tree(
     min_points: int = MIN_POINTS,
     include_depth: bool = True,
 ) -> tuple[list, list]:
-    """Return all polygons (land + inland water), pulling defaults from meta if provided.
+    """Return all polygons (land + inland water), using provided thresholds.
        Wrapper around assemble_polygons() to get both even and odd parity contour sets.
     Parameters
     ----------
@@ -163,9 +163,9 @@ def build_polygons_from_tree(
     tracing_cfg : ExtractConfig
         Extract configuration providing verbosity and optional defaults.
     min_area : float, optional
-        Minimum polygon area. If None, pulls from meta or defaults to MIN_AREA.
+        Minimum polygon area; defaults to MIN_AREA if not specified.
     min_points : int, optional
-        Minimum vertex count in a ring. If None, pulls from meta or defaults to MIN_POINTS.
+        Minimum vertex count in a ring; defaults to MIN_POINTS if not specified.
     include_depth : bool
         If True, return polygons as (geometry, depth) tuples.
     Returns

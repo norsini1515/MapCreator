@@ -62,11 +62,10 @@ def _validate_output_dir_meta(
         out_dir: Path | str | None,
         test_data_default_subfolder: str,
         ) -> Tuple[Path | None, bool]:
-    """Internal helper to validate output directory and determine if outputs should be written.
+    """Validate output directory and determine whether to write outputs.
 
-    Doesn't matter if out_dir is in meta, if not provided as an argument and verbose is not on, no outputs will be written. 
-    If verbose is on and out_dir is not provided, defaults to test data directory with a subfolder for the specific step. 
-
+    If `out_dir` is missing and verbosity is enabled, default to the test data
+    directory plus `test_data_default_subfolder`.
     """
     verbose = tracing_cfg.verbose
     write_outputs = (out_dir is not None) or verbose in (True, "info", "debug")
@@ -96,17 +95,16 @@ def extract_image(
     This is a focused, image‑only front‑end around :func:`process_image` that
     prepares the grayscale input, thresholds it, and returns a 0/1 land mask.
 
-    Depending on ``meta['verbose']`` and ``out_dir``, it can also write
+    Depending on tracing configuration verbosity and ``out_dir``, it can also write
     diagnostic PNGs of the traced outline and filled mask.
 
     Parameters
     ----------
     image
         Path to the hand‑prepared source basemap image.
-    meta
-        Metadata dictionary for the pipeline run. May contain ``"verbose"``
-        to control logging and output. If ``"image_shape"`` is missing, the
-        image dimensions are detected and stored in this dict.
+    tracing_cfg
+        Extract configuration for the pipeline run. If ``image_shape`` is
+        missing, the image dimensions are detected and stored on this object.
     out_dir
         Optional output directory for diagnostic PNGs. If omitted but
         ``meta['verbose']`` requests output, a test‑data subfolder is chosen
@@ -133,9 +131,9 @@ def extract_image(
         outline_path = None
 
     #Step 0: Ensure we have image dimensions in metadata
-    if ExtractConfig.image_shape is None:
-        info(f"Dimensions not found in metadata; detecting from image...")
-        ExtractConfig.image_shape = detect_dimensions(image)
+    if tracing_cfg.image_shape is None:
+        info("Dimensions not found in config; detecting from image...")
+        tracing_cfg.image_shape = detect_dimensions(image)
 
     land_mask, _ = process_image(
         src_path=image,
@@ -168,10 +166,10 @@ def extract_vectors(
         Either a 2D NumPy array representing the binary land mask (1 = land,
         0 = water) or a Path to the original source image. If a Path is
         provided, :func:`extract_image` is called internally to build the mask.
-    meta
-        Metadata dictionary for the pipeline run. Expected to contain entries
-        such as ``crs``, ``extent``, ``image_shape``, and optional
-        ``verbose`` flags used for logging and transforms.
+    tracing_cfg
+        Extract configuration for the pipeline run. Expected to expose entries
+        such as ``crs``, extent bounds (``xmin``, ``ymin``, ``xmax``, ``ymax``),
+        and ``image_shape`` for transform and rasterization.
     out_dir
         Optional directory where intermediate vector outputs will be written.
         When provided (or when ``meta['verbose']`` enables output), two
@@ -223,9 +221,10 @@ def extract_vectors(
     
     # Step 3: Classify and transform polygons to GeoDataFrames
     process_step("Step 3: Defining even and odd polygon sets...")
-    affine_val = affine_from_meta(meta)
-    even_gdf = polygons_to_gdf(even_polys, crs=meta.get("crs"), affine_val=affine_val)
-    odd_gdf = polygons_to_gdf(odd_polys, crs=meta.get("crs"), affine_val=affine_val)
+    affine_val = affine_from_meta(tracing_cfg)
+    crs_val = tracing_cfg.crs
+    even_gdf = polygons_to_gdf(even_polys, crs=crs_val, affine_val=affine_val)
+    odd_gdf = polygons_to_gdf(odd_polys, crs=crs_val, affine_val=affine_val)
     
     if add_parity:
         even_gdf["parity"] = "even"
@@ -239,8 +238,8 @@ def extract_vectors(
         even_path = out_dir / f"even.geojson"
         odd_path = out_dir / f"odd.geojson"
 
-        export_gdf(even_gdf, even_path, verbose=verbose)
-        export_gdf(odd_gdf, odd_path, verbose=verbose)
+        export_gdf(even_gdf, even_path, verbose=tracing_cfg.verbose)
+        export_gdf(odd_gdf, odd_path, verbose=tracing_cfg.verbose)
 
     return even_gdf, odd_gdf
 
@@ -349,7 +348,7 @@ def extract_rasters(
     For more flexible use (custom sections, filenames, etc.), call
     :func:`build_class_raster` directly in a loop.
     """
-    verbose = meta.get("verbose", False)
+    verbose = bool(tracing_cfg.verbose)
 
     # Load class configuration once for this call
     if class_config is None:
@@ -360,7 +359,7 @@ def extract_rasters(
         process_step(f"Starting raster extraction from image {image.name}...")
         # Vector extraction from image
         even_cfg, odd_cfg = get_even_odd_configs(class_config)
-        even_gdf, odd_gdf = extract_vectors(image, meta, out_dir=out_dir, add_parity=add_parity)
+        even_gdf, odd_gdf = extract_vectors(image, tracing_cfg, out_dir=out_dir, add_parity=add_parity)
         even_gdf = label_vectors(even_gdf, even_cfg, verbose=verbose)
         odd_gdf = label_vectors(odd_gdf, odd_cfg, verbose=verbose)
         merged_gdf = merge_gdfs([even_gdf, odd_gdf], verbose=verbose)
@@ -374,8 +373,10 @@ def extract_rasters(
 
     process_step("Building class rasters...")
     raster_paths: dict[str, str] = {}
-    class_values = class_config.classes or {}
-    class_colors = class_config.colors or {}
+    # Use default raster class config until ClassConfig adapters are implemented
+    default_cfg = build_class_raster.__globals__["get_default_raster_class_config"]()  # avoid circular import
+    class_values = default_cfg.get("classes", {})
+    class_colors = default_cfg.get("colors", {})
 
     for section_name, mapping in class_values.items():
         colors = class_colors.get(section_name, {})
@@ -385,10 +386,15 @@ def extract_rasters(
         raster_path = build_class_raster(
             merged_gdf,
             out_dir,
-            width=meta["image_shape"][0],
-            height=meta["image_shape"][1],
-            extent=meta["extent"],
-            crs=meta["crs"],
+            width=tracing_cfg.image_shape[0],
+            height=tracing_cfg.image_shape[1],
+            extent={
+                "xmin": tracing_cfg.xmin,
+                "ymin": tracing_cfg.ymin,
+                "xmax": tracing_cfg.xmax,
+                "ymax": tracing_cfg.ymax,
+            },
+            crs=tracing_cfg.crs,
             class_mapping=mapping,
             color_mapping=colors,
             section=section_name,
@@ -415,11 +421,11 @@ def extract_all(
     """
     process_step(f"Starting full extraction pipeline for {image.name}...")
 
-    verbose = meta.get("verbose", False)
+    verbose = bool(tracing_cfg.verbose)
     if verbose:
         info(f"Verbose mode is on.")
         
-    out_dir, write_outputs = _validate_output_dir_meta(meta, out_dir, 'full_extraction')
+    out_dir, write_outputs = _validate_output_dir_meta(tracing_cfg, out_dir, 'full_extraction')
     
     if write_outputs:
         info(f"Output files will be written to {out_dir}")
@@ -428,14 +434,18 @@ def extract_all(
     class_cfg = load_class_config(tracing_cfg)
     even_cfg, odd_cfg = get_even_odd_configs(class_cfg)
 
-    even_gdf, odd_gdf = extract_vectors(image, meta, out_dir=out_dir, add_parity=add_parity)
+    even_gdf, odd_gdf = extract_vectors(image, tracing_cfg, out_dir=out_dir, add_parity=add_parity)
 
     even_gdf = label_vectors(even_gdf, even_cfg, verbose=verbose)
     odd_gdf  = label_vectors(odd_gdf, odd_cfg, verbose=verbose)
     
     merged_gdf = merge_gdfs([even_gdf, odd_gdf], verbose=verbose)
 
-    raster_paths = extract_rasters(merged_gdf, out_dir, meta, class_config=class_cfg, even_cfg=even_cfg, odd_cfg=odd_cfg)
+    if write_outputs and out_dir is not None:
+        raster_paths = extract_rasters(merged_gdf, out_dir, tracing_cfg, class_config=class_cfg, even_cfg=even_cfg, odd_cfg=odd_cfg)
+    else:
+        warn("Outputs disabled (no out_dir and verbosity off); skipping rasterization.")
+        raster_paths = {}
 
     # For now we only report raster outputs; vector files (even/odd) are
     # written by extract_vectors when outputs are enabled.

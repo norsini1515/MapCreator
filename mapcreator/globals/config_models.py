@@ -24,7 +24,7 @@ import yaml
 
 from mapcreator.globals.logutil import info, warn, error
 from mapcreator.globals import directories, configs
-
+from mapcreator.globals import configs
 
 # --- Dataclasses ---------------------------------------------------------
 @dataclass(frozen=True)
@@ -56,9 +56,9 @@ class ExtractConfig:
     ymax: float | None = None
     
     # polygon generation
-    crs: str | None = None
-    min_points: int | None = None
-    min_area: float | None = None
+    crs: str = "EPSG:3857"
+    min_points: int | None = configs.MIN_POINTS
+    min_area: float | None = configs.MIN_AREA
 
     #logging
     log_file_name: str | None = None
@@ -170,7 +170,7 @@ def build_extract_config(raw: Dict[str, Any]) -> ExtractConfig:
         ymin=raw.get("ymin"),
         xmax=raw.get("xmax"),
         ymax=raw.get("ymax"),
-        crs=raw.get("crs"),
+        crs=raw.get("crs", "EPSG:3857"),
         min_points=raw.get("min_points"),
         min_area=raw.get("min_area"),
         log_file_name=raw.get("log_file_name"),
