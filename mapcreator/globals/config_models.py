@@ -46,6 +46,9 @@ class ExtractConfig:
     class_config_path: Path | None = None
     out_dir: Path | None = None
 
+    #image data
+    image_shape: tuple | None = None
+
     #map extent
     xmin: float | None = None
     ymin: float | None = None
@@ -59,7 +62,7 @@ class ExtractConfig:
 
     #logging
     log_file_name: str | None = None
-    verbose: bool | None = None
+    verbose: bool | str = False #accepts debug, info
     compute_extent_polygons: bool | None = None
 
 @dataclass
@@ -171,7 +174,7 @@ def build_extract_config(raw: Dict[str, Any]) -> ExtractConfig:
         min_points=raw.get("min_points"),
         min_area=raw.get("min_area"),
         log_file_name=raw.get("log_file_name"),
-        verbose=raw.get("verbose"),
+        verbose=raw.get("verbose", False),
         compute_extent_polygons=raw.get("compute_extent_polygons"),
     )
 

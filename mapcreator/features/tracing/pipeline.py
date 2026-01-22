@@ -58,7 +58,7 @@ from mapcreator.globals import configs
 from mapcreator.globals.config_models import ClassConfig, ExtractConfig, read_config_file
 
 def _validate_output_dir_meta(
-        meta: dict, 
+        tracing_cfg: ExtractConfig, 
         out_dir: Path | str | None,
         test_data_default_subfolder: str,
         ) -> Tuple[Path | None, bool]:
@@ -68,7 +68,7 @@ def _validate_output_dir_meta(
     If verbose is on and out_dir is not provided, defaults to test data directory with a subfolder for the specific step. 
 
     """
-    verbose = meta.get("verbose", False)
+    verbose = tracing_cfg.verbose
     write_outputs = (out_dir is not None) or verbose in (True, "info", "debug")
 
     if out_dir is not None:
@@ -88,7 +88,7 @@ def extract_image(
     image: Path,
     tracing_cfg: ExtractConfig,
     *,
-    out_dir: Path = None,
+    out_dir: Path|None = None,
     outline_suffix: str = "_outline",
 ) -> np.ndarray:
     """Preprocess a hand‑drawn basemap into a binary land mask.
@@ -123,8 +123,8 @@ def extract_image(
     """
     process_step(f"Extracting land mask image from {image.name}...")
     
-    verbose = meta.get("verbose", False)
-    out_dir, write_outputs = _validate_output_dir_meta(meta, out_dir, 'extract_images')
+    verbose = bool(tracing_cfg.verbose)
+    out_dir, write_outputs = _validate_output_dir_meta(tracing_cfg, out_dir, 'extract_images')
 
     if write_outputs:
         info(f"Output files will be written to {out_dir}")
@@ -133,9 +133,9 @@ def extract_image(
         outline_path = None
 
     #Step 0: Ensure we have image dimensions in metadata
-    if 'image_shape' not in meta:
+    if ExtractConfig.image_shape is None:
         info(f"Dimensions not found in metadata; detecting from image...")
-        meta["image_shape"] = detect_dimensions(image)
+        ExtractConfig.image_shape = detect_dimensions(image)
 
     land_mask, _ = process_image(
         src_path=image,
@@ -153,7 +153,7 @@ def extract_vectors(
         img: Union[np.ndarray, Path], #either a mask array or a path to an image
         tracing_cfg: ExtractConfig,
         *,
-        out_dir: Path = None,
+        out_dir: Path|None = None,
         add_parity: bool = True,
     ) -> Tuple[gpd.GeoDataFrame, gpd.GeoDataFrame]:
     """Extract land/water polygons from a binary mask or image.
@@ -192,8 +192,8 @@ def extract_vectors(
     ValueError
         If no even or odd polygons can be extracted from the binary image.
     """
-    verbose = meta.get("verbose", False)
-    out_dir, write_outputs = _validate_output_dir_meta(meta, out_dir, 'extract_vectors')
+    verbose = tracing_cfg.verbose
+    out_dir, write_outputs = _validate_output_dir_meta(tracing_cfg, out_dir, 'extract_vectors')
 
     if isinstance(img, Path):
         image = img
@@ -208,12 +208,12 @@ def extract_vectors(
     if image is not None:
         # Step 1: Process image to centerline outline and filled land mask
         process_step("Processing image to outline + filled land mask...")
-        land_mask = extract_image(image, meta)
+        land_mask = extract_image(image, tracing_cfg)
         bin_img = land_mask
     
     # Step 2: Extract the even and odd contours from the binary image
     process_step("Step 2: Extracting even and odd contours from binary image...")
-    even_polys, odd_polys = extract_polygons_from_binary(bin_img=bin_img, meta=meta, verbose=verbose)
+    even_polys, odd_polys = extract_polygons_from_binary(bin_img=bin_img, tracing_cfg=tracing_cfg)
     
     if not even_polys or not odd_polys:
         raise ValueError("No even (land) or odd (water) polygons extracted; check input image and preprocessing settings.")
