@@ -290,7 +290,7 @@ def label_vectors(
 """Class configuration helpers."""
 
 
-def load_class_config(meta: ExtractConfig) -> ClassConfig:
+def load_class_config(tracing_cfg: ExtractConfig) -> ClassConfig:
     """Load class/label/color configuration using path from ``meta``.
 
     This now delegates to :func:`read_config_file` so that callers
@@ -299,8 +299,8 @@ def load_class_config(meta: ExtractConfig) -> ClassConfig:
     """
     process_step("Loading class configuration (labels/classes/colors)...")
 
-    cfg_path = meta.class_config_path
-    return read_config_file(cfg_path, kind="class")  # type: ignore[return-value]
+    cfg_path = tracing_cfg.class_config_path
+    return read_config_file(cfg_path, kind="class")
 
 
 def get_even_odd_configs(class_cfg: ClassConfig) -> tuple[dict, dict]:
@@ -331,7 +331,7 @@ def get_even_odd_configs(class_cfg: ClassConfig) -> tuple[dict, dict]:
 def extract_rasters(
     source: Union[gpd.GeoDataFrame, Path],
     out_dir: Path,
-    tracing_cfg,
+    tracing_cfg: ExtractConfig,
     class_config: ClassConfig | None = None,
     even_cfg: dict | None = None,
     odd_cfg: dict | None = None,
@@ -352,7 +352,7 @@ def extract_rasters(
 
     # Load class configuration once for this call
     if class_config is None:
-        class_config = load_class_config(tracing_cfg)
+        class_config = read_config_file(tracing_cfg.class_config_path, kind="class") 
 
     if isinstance(source, Path):
         image = source
@@ -382,12 +382,14 @@ def extract_rasters(
         colors = class_colors.get(section_name, {})
         if not colors:
             warn(f"No color mapping found for section '{section_name}'; defaulting to empty colormap.")
-
+        if tracing_cfg.image_shape is None:
+            raise ValueError("tracing_cfg.image_shape is required to build rasters")
+        width, height = tracing_cfg.image_shape
         raster_path = build_class_raster(
             merged_gdf,
             out_dir,
-            width=tracing_cfg.image_shape[0],
-            height=tracing_cfg.image_shape[1],
+            width=width,
+            height=height,
             extent={
                 "xmin": tracing_cfg.xmin,
                 "ymin": tracing_cfg.ymin,

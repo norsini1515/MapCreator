@@ -17,7 +17,7 @@ to build the appropriate dataclass for each config type.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, Any, Literal, Mapping
+from typing import Dict, Any, Literal, Mapping, overload
 from pathlib import Path
 
 import yaml
@@ -246,6 +246,20 @@ def build_class_config(raw: Dict[str, Any], *, cfg_path: Path | None) -> ClassCo
 
     return ClassConfig(run_scheme=run_scheme, registry=registry)
 
+@overload
+def read_config_file(
+    path: Path | str | None,
+    *,
+    kind: Literal["extract"],
+) -> ExtractConfig: ...
+
+@overload
+def read_config_file(
+    path: Path | str | None,
+    *,
+    kind: Literal["class"],
+) -> ClassConfig: ...
+
 def read_config_file(
     path: Path | str | None,
     *,
@@ -278,4 +292,41 @@ def read_config_file(
 
     # Defensive; Literal typing should prevent this
     raise ValueError(f"Unsupported config kind: {kind}")
+
+if __name__ == "__main__":
+    """Minimal test harness for config loading.
+
+    - Loads default extract and class configs (using project defaults)
+    - Prints a brief summary to verify dataclass construction
+    """
+    from pprint import pprint
+
+    try:
+        info("Testing read_config_file for 'extract'...")
+        extract_cfg = read_config_file(None, kind="extract")
+        print("ExtractConfig summary:")
+        pprint({
+            "image": str(extract_cfg.image) if extract_cfg.image else None,
+            "out_dir": str(extract_cfg.out_dir) if extract_cfg.out_dir else None,
+            "crs": extract_cfg.crs,
+            "min_points": extract_cfg.min_points,
+            "min_area": extract_cfg.min_area,
+            "verbose": extract_cfg.verbose,
+        })
+
+        info("Testing read_config_file for 'class'...")
+        class_cfg = read_config_file(None, kind="class")
+        print("ClassConfig summary:")
+        pprint({
+            "sections": list(class_cfg.registry.keys()),
+            "run_scheme_sections": list(class_cfg.run_scheme.keys()),
+        })
+        pprint({
+            "sections_values": list(class_cfg.registry.values()),
+            "run_scheme_sections_values": list(class_cfg.run_scheme.values()),
+        })
+
+        info("Config models self-test completed successfully.")
+    except Exception as exc:
+        error(f"Config models self-test failed: {exc}")
 
