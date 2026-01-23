@@ -48,11 +48,11 @@ from .img_preprocess import process_image
 from .polygonize import extract_polygons_from_binary, polygons_to_gdf
 from .geo_transform import affine_from_meta
 from .exporters import export_gdf
-from .gdf_tools import merge_gdfs
 from .rasters import build_class_raster
 
 from mapcreator.globals.logutil import info, process_step, error, setting_config, success, warn
 from mapcreator.globals.image_utility import detect_dimensions
+from mapcreator.globals.gdf_tools import merge_gdfs
 from mapcreator import directories as _dirs
 from mapcreator.globals import configs
 from mapcreator.globals.config_models import ClassConfig, ExtractConfig, read_config_file
@@ -311,7 +311,7 @@ def get_even_odd_configs(class_cfg: ClassConfig) -> tuple[dict, dict]:
     falls back to :mod:`configs` LAND/WATER defaults.
     """
  
-    labels = class_cfg.labels or {}
+    # labels = class_cfg.labels or {}
     base_labels = labels.get("base", {}) if isinstance(labels, dict) else {}
 
     even_key = base_labels.get("even")
@@ -358,8 +358,9 @@ def extract_rasters(
         image = source
         process_step(f"Starting raster extraction from image {image.name}...")
         # Vector extraction from image
-        even_cfg, odd_cfg = get_even_odd_configs(class_config)
         even_gdf, odd_gdf = extract_vectors(image, tracing_cfg, out_dir=out_dir, add_parity=add_parity)
+        
+        even_cfg, odd_cfg = get_even_odd_configs(class_config)
         even_gdf = label_vectors(even_gdf, even_cfg, verbose=verbose)
         odd_gdf = label_vectors(odd_gdf, odd_cfg, verbose=verbose)
         merged_gdf = merge_gdfs([even_gdf, odd_gdf], verbose=verbose)
@@ -373,8 +374,7 @@ def extract_rasters(
 
     process_step("Building class rasters...")
     raster_paths: dict[str, str] = {}
-    # Use default raster class config until ClassConfig adapters are implemented
-    default_cfg = build_class_raster.__globals__["get_default_raster_class_config"]()  # avoid circular import
+    
     class_values = default_cfg.get("classes", {})
     class_colors = default_cfg.get("colors", {})
 
@@ -442,6 +442,7 @@ def extract_all(
     odd_gdf  = label_vectors(odd_gdf, odd_cfg, verbose=verbose)
     
     merged_gdf = merge_gdfs([even_gdf, odd_gdf], verbose=verbose)
+    sys.exit("Debug exit after merging GeoDataFrames.")
 
     if write_outputs and out_dir is not None:
         raster_paths = extract_rasters(merged_gdf, out_dir, tracing_cfg, class_config=class_cfg, even_cfg=even_cfg, odd_cfg=odd_cfg)
@@ -452,3 +453,6 @@ def extract_all(
     # For now we only report raster outputs; vector files (even/odd) are
     # written by extract_vectors when outputs are enabled.
     return raster_paths
+
+if __name__ == "__main__":
+    print("This module is not intended to be run directly; please use it as part of the MapCreator package.")

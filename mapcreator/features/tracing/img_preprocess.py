@@ -8,7 +8,16 @@ from mapcreator.globals.logutil import info, process_step, error, setting_config
 from mapcreator.globals.image_utility import write_image, to_u8_for_display, u8_to_bool, bool_to_u8, is_binary_image
 from mapcreator import directories as _dirs
 
-def _show_step(title: str, img: np.ndarray, verbose: bool, *, save: bool = False, max_w: int = 1280, max_h: int = 900, wait_ms: int = 0, out_dir: Path = _dirs.TEST_DATA_DIR) -> None:
+def _show_step(title: str, 
+               img: np.ndarray, 
+               verbose: bool, 
+               *, 
+               save: bool = False, 
+               max_w: int = 1280, 
+               max_h: int = 900, 
+               wait_ms: int = 0, 
+               out_dir: Path = _dirs.TEST_DATA_DIR
+               ) -> None:
     """Show an image scaled to fit on screen using a resizable window and optionally save the step.
     Set wait_ms=0 to wait for a key; >0 waits that many milliseconds.
     If save=True, writes a PNG of the original-sized (non-resized) image to data/processed/test_data.

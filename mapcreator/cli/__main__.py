@@ -38,7 +38,7 @@ from mapcreator.globals.config_models import ExtractConfig, read_config_file
 from mapcreator.features.tracing.reclass import burn_polygons_into_class_raster, apply_palette_from_yaml
 
 # DEFAULT_CONFIG_FILE_PATH
-DEFAULT_CONFIG_FILE_PATH = directories.CONFIG_DIR / configs.IMAGE_TRACING_EXTRACT_CONFIGS_NAME
+DEFAULT_CONFIG_FILE_PATH = directories.CONFIG_DIR / configs.IMAGE_TRACING_EXTRACT_CONFIGS_FILENAME
 # LOG_FILE_NAME
 LOG_FILE_NAME =  f"{configs.WORLD_NAME.replace(' ', '_')}_extract.log"
 

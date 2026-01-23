@@ -332,7 +332,7 @@ def extract_polygons_from_binary(bin_img,
 
 def polygons_to_gdf(polygons, crs:str="EPSG:3857", affine_val:Affine|None=None, verbose: bool|str = False) -> gpd.GeoDataFrame:
     """Convert a list of Shapely polygons (or (polygon, depth) tuples) to a GeoDataFrame."""
-    from mapcreator.features.tracing.gdf_tools import to_gdf
+    from mapcreator.globals.gdf_tools import to_gdf
 
     # Support both tuples and plain geometries
     if polygons and isinstance(polygons[0], Polygon):

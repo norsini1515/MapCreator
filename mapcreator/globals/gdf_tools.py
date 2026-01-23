@@ -1,8 +1,11 @@
 import pandas as pd
 import geopandas as gpd
-from mapcreator.globals.logutil import info, process_step, error, setting_config, success, warn
-
 from typing import List
+
+from mapcreator.globals.logutil import (
+    info, process_step, error, setting_config, success, warn
+)
+
 def to_gdf(polygons, metadata=None, crs="EPSG:3857"):
     metadata = metadata or {}
     df = pd.DataFrame(metadata, index=range(len(polygons)))
@@ -10,8 +13,8 @@ def to_gdf(polygons, metadata=None, crs="EPSG:3857"):
     gdf["id"] = gdf.index
     return gdf
 
-
-def dissolve_class(gdf: gpd.GeoDataFrame, class_col="class"):
+def dissolve_class(gdf: gpd.GeoDataFrame, class_col:str="class"):
+    '''class_col: column name to dissolve by'''
     return gdf.dissolve(by=class_col, as_index=False)
 
 def _ensure_crs(gdf, crs):

@@ -17,7 +17,7 @@ to build the appropriate dataclass for each config type.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, Any, Literal, Mapping, overload
+from typing import Dict, Any, Literal, overload
 from pathlib import Path
 
 import yaml
@@ -327,6 +327,7 @@ if __name__ == "__main__":
         })
 
         info("Config models self-test completed successfully.")
+    
     except Exception as exc:
         error(f"Config models self-test failed: {exc}")
 

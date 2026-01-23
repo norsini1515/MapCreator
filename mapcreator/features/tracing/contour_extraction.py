@@ -60,6 +60,7 @@ def _ensure_binary_mask(mask: np.ndarray) -> np.ndarray:
     Normalize an input mask into uint8 {0,255} where nonzero becomes 255.
     Accepts 0/1, 0/255, or arbitrary nonzero inputs.
     """
+    # TODO: to read multiple classes, we might want a window of thresholding instead.
     if mask.ndim != 2:
         # If caller passes a 3-channel mask, reduce it safely.
         mask = mask[..., 0]

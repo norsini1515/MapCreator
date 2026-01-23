@@ -1,11 +1,7 @@
-from mapcreator.globals import configs, directories
-from mapcreator.scripts import extract_images
-
 from mapcreator.globals.logutil import info, process_step, error, setting_config, success, warn
 from pathlib import Path
 import numpy as np
 import cv2
-import sys
 
 def flood_fill_img(img_array: np.ndarray, seedPoint=(0, 0)) -> np.ndarray:
     """
@@ -72,7 +68,7 @@ def write_image(
         p.unlink()
         assert not p.exists(), f"unlink failed; file still exists: {p}"
 
-    ok = cv2.imwrite(p, img_u8)
+    ok = cv2.imwrite(str(p), img_u8)
 
     if not ok or not p.exists():
         raise IOError(f"Failed to write image: {p.resolve()}")
