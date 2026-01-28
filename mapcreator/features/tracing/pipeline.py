@@ -38,6 +38,7 @@ extract_all() returns: (land_gdf, waterbody_gdf, ocean_gdf, merged_gdf, bin_img)
 from pathlib import Path
 import sys
 from typing import Tuple, Union
+from attr import validate
 import numpy as np
 import geopandas as gpd
 import pandas as pd
@@ -55,7 +56,10 @@ from mapcreator.globals.image_utility import detect_dimensions
 from mapcreator.globals.gdf_tools import merge_gdfs
 from mapcreator import directories as _dirs
 from mapcreator.globals import configs
-from mapcreator.globals.config_models import ClassConfig, ExtractConfig, read_config_file
+from mapcreator.globals.config_models import (
+    ExtractConfig, ClassConfig, ClassDef,
+    read_class_resolver_from_extract
+)
 
 def _validate_output_dir_meta(
         tracing_cfg: ExtractConfig, 
@@ -200,8 +204,8 @@ def extract_vectors(
         bin_img = img
         image = None
         source='array'
+
     process_step(f"Extracting vectors from {source}...")
-    
     #-----------    
     if image is not None:
         # Step 1: Process image to centerline outline and filled land mask
@@ -226,9 +230,8 @@ def extract_vectors(
     even_gdf = polygons_to_gdf(even_polys, crs=crs_val, affine_val=affine_val)
     odd_gdf = polygons_to_gdf(odd_polys, crs=crs_val, affine_val=affine_val)
     
-    if add_parity:
-        even_gdf["parity"] = "even"
-        odd_gdf["parity"] = "odd"
+    even_gdf["parity"] = "even" if add_parity else "none"
+    odd_gdf["parity"] = "odd" if add_parity else "none"
     
     success("Constructed GeoDataFrames from polygons.")
 
@@ -245,7 +248,7 @@ def extract_vectors(
 
 def label_vectors(
         gdf: gpd.GeoDataFrame,
-        class_def: dict,
+        class_def: ClassDef,
         verbose: bool = False,
     ) -> gpd.GeoDataFrame:
     """Attach class metadata columns to a vector layer.
@@ -259,7 +262,7 @@ def label_vectors(
     gdf
         Input GeoDataFrame whose geometries should be labeled.
     class_def
-        Mapping of attribute names to values to assign to every row in the
+        Definition of attributes to assign to every row in the
         output GeoDataFrame. Common keys include ``"class"`` and other
         semantic tags used downstream.
     verbose
@@ -273,59 +276,16 @@ def label_vectors(
         corresponding constant values applied to all features.
     """
     classified_gdf = gdf.copy()
-    class_def = dict(class_def) #make a copy to avoid mutating input
 
-    if "class" not in class_def:
-            if verbose:
-                warn("No class specified in definition; defaulting to 'unknown'.")
-            class_def["class"] = "unknown"
+    for key, value in class_def.__dict__.items():
+        if verbose:
+            info(f"Labeling geometries with '{key}': '{value}'")
 
-    for key, value in class_def.items():
         classified_gdf[key] = value
 
     return classified_gdf
+
 # --- Vector portion of the pipeline is done ---#
-
-
-"""Class configuration helpers."""
-
-
-def load_class_config(tracing_cfg: ExtractConfig) -> ClassConfig:
-    """Load class/label/color configuration using path from ``meta``.
-
-    This now delegates to :func:`read_config_file` so that callers
-    receive a typed :class:`ClassConfig` instance instead of a raw
-    dictionary.
-    """
-    process_step("Loading class configuration (labels/classes/colors)...")
-
-    cfg_path = tracing_cfg.class_config_path
-    return read_config_file(cfg_path, kind="class")
-
-
-def get_even_odd_configs(class_cfg: ClassConfig) -> tuple[dict, dict]:
-    """Derive even/odd vector label definitions from config ``labels``.
-
-    Expects ``labels.base.even`` and ``labels.base.odd`` to contain the
-    class keys to use for the even/odd polygon sets. If these are missing,
-    falls back to :mod:`configs` LAND/WATER defaults.
-    """
- 
-    # labels = class_cfg.labels or {}
-    base_labels = labels.get("base", {}) if isinstance(labels, dict) else {}
-
-    even_key = base_labels.get("even")
-    odd_key = base_labels.get("odd")
-
-    if not even_key or not odd_key:
-        warn("labels.base.even/odd not fully specified; falling back to configs.LAND_DEFS/WATER_DEFS.")
-        return configs.LAND_DEFS, configs.WATER_DEFS
-
-    even_defs = {"class": even_key}
-    odd_defs = {"class": odd_key}
-
-    info(f"Using config-defined vector classes: even -> '{even_key}', odd -> '{odd_key}'.")
-    return even_defs, odd_defs
 
 # --- Raster portion of the pipeline --- #
 def extract_rasters(
@@ -338,53 +298,98 @@ def extract_rasters(
     *,
     add_parity: bool = True,
 ) -> dict[str, str]:
-    """Run raster extraction for a merged vector layer or directly from an image.
+    """Build one class raster per section (base/terrain/climate/...) using ClassResolver.
 
-    This helper can be driven either by a precomputed merged GeoDataFrame
-    (typically land+water classes) or by an image path, in which case it
-    will perform vector extraction and labeling before rasterization.
-
-    It returns paths to the standard world/terrain/climate class rasters.
-    For more flexible use (custom sections, filenames, etc.), call
-    :func:`build_class_raster` directly in a loop.
+    Inputs:
+      - Path: image path; will extract vectors, label per section, merge, rasterize
+      - GeoDataFrame: already-merged vectors; will rasterize once per section? (see below)
+      - dict[str, GeoDataFrame]: pre-merged per-section vectors; rasterize each
     """
     verbose = bool(tracing_cfg.verbose)
 
     # Load class configuration once for this call
     if class_config is None:
-        class_config = read_config_file(tracing_cfg.class_config_path, kind="class") 
+        class_config = read_class_resolver_from_extract(tracing_cfg) 
+
+    elif not class_config.validate():
+        error("Provided class configuration is invalid; aborting raster extraction.")
+        raise ValueError("Invalid class configuration provided.")
+    
+    # Ensure output directory exists
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    # ------------------------------------------------------------------
+    # 1) Build merged_vector_gdfs: dict[section -> merged gdf]
+    # ------------------------------------------------------------------
+    merged_vector_gdfs: dict[str, gpd.GeoDataFrame] = {}
 
     if isinstance(source, Path):
         image = source
         process_step(f"Starting raster extraction from image {image.name}...")
-        # Vector extraction from image
-        even_gdf, odd_gdf = extract_vectors(image, tracing_cfg, out_dir=out_dir, add_parity=add_parity)
         
-        even_cfg, odd_cfg = get_even_odd_configs(class_config)
-        even_gdf = label_vectors(even_gdf, even_cfg, verbose=verbose)
-        odd_gdf = label_vectors(odd_gdf, odd_cfg, verbose=verbose)
-        merged_gdf = merge_gdfs([even_gdf, odd_gdf], verbose=verbose)
+        # Extract base vectors once
+        even_base_gdf, odd_base_gdf = extract_vectors(image, tracing_cfg, out_dir=out_dir, add_parity=add_parity)
+        
+        # Resolve per-section definitions for even/odd
+        even_defs, odd_defs = class_config.get_even_odd_configs()  # dict[section -> (id, ClassDef)]
+        
+        for section in class_config.get_run_scheme_sections():
+            even_id, even_def = even_defs[section]
+            odd_id, odd_def = odd_defs[section]
+            
+            if verbose:
+                info(f"[{section}] even -> {even_id} ({even_def.name})")
+                info(f"[{section}]  odd -> {odd_id} ({odd_def.name})")
+
+            even_gdf = label_vectors(even_base_gdf.copy(), (even_id, even_def), verbose=verbose)
+            odd_gdf = label_vectors(odd_base_gdf.copy(), (odd_id, odd_def), verbose=verbose)
+            
+            merged_vector_gdfs[section] = merge_gdfs([even_gdf, odd_gdf], verbose=verbose)
+
+    elif isinstance(source, dict):
+        # Already have per-section merged GeoDataFrames
+        merged_vector_gdfs = {k: v.copy() for k, v in source.items()}
+
     elif isinstance(source, gpd.GeoDataFrame):
-        merged_gdf = source
-        process_step("Starting raster extraction from merged GeoDataFrame...")
+        # Single merged gdf. Two reasonable behaviors:
+        #   A) Rasterize once as "base" only
+        #   B) Rasterize same geometry for all sections (not usually meaningful unless class ids match)
+        merged_vector_gdfs["base"] = source.copy()
+
     else:
-        raise ValueError("Source must be either a Path to an image or a merged GeoDataFrame.")
-
-    out_dir.mkdir(parents=True, exist_ok=True)
-
-    process_step("Building class rasters...")
-    raster_paths: dict[str, str] = {}
+        raise ValueError("source must be Path, GeoDataFrame, or dict[str, GeoDataFrame].")
     
-    class_values = default_cfg.get("classes", {})
-    class_colors = default_cfg.get("colors", {})
 
-    for section_name, mapping in class_values.items():
-        colors = class_colors.get(section_name, {})
-        if not colors:
-            warn(f"No color mapping found for section '{section_name}'; defaulting to empty colormap.")
-        if tracing_cfg.image_shape is None:
-            raise ValueError("tracing_cfg.image_shape is required to build rasters")
-        width, height = tracing_cfg.image_shape
+    # ------------------------------------------------------------------
+    # 2) Rasterize per section using registry-derived mappings
+    # ------------------------------------------------------------------
+    if tracing_cfg.image_shape is None:
+        raise ValueError("tracing_cfg.image_shape is required to build rasters")
+    
+    width, height = tracing_cfg.image_shape
+    
+    raster_paths: dict[str, str] = {}
+    process_step("Building class rasters...")
+    
+
+    for section_name, merged_gdf  in merged_vector_gdfs.items():
+       # Build mappings from registry for this section
+        # class_mapping: id -> label/name
+        # color_mapping: id -> hex color
+        try:
+            id_to_def = class_config.registry.defines[section_name]
+        except KeyError:
+            # If the caller passed a dict with sections not in registry, fail loudly
+            raise ValueError(f"Section '{section_name}' not found in class registry. "
+                             f"Available: {class_config.get_registry_sections()}")
+
+        class_mapping = {cid: ddef.name for cid, ddef in id_to_def.items()}
+        color_mapping = {cid: ddef.color for cid, ddef in id_to_def.items()}
+
+        if verbose:
+            info(f"[{section_name}] class_mapping={class_mapping}")
+            info(f"[{section_name}] color_mapping={color_mapping}")
+
         raster_path = build_class_raster(
             merged_gdf,
             out_dir,
@@ -397,8 +402,8 @@ def extract_rasters(
                 "ymax": tracing_cfg.ymax,
             },
             crs=tracing_cfg.crs,
-            class_mapping=mapping,
-            color_mapping=colors,
+            class_mapping=class_mapping,
+            color_mapping=color_mapping,
             section=section_name,
             class_col="class",
         )

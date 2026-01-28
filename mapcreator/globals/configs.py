@@ -27,7 +27,8 @@ WATER_EXPORT_DEFS = {"file_name": "water.geojson"}
 # CONFIGURATION FILES
 #---------------------
 IMAGE_TRACING_EXTRACT_CONFIGS_FILENAME = 'extract_base_world_configs.yml'
-CLASS_CONFIGURATIONS_FILENAME = 'class_configurations.yml'
+CLASS_REGISTRY_FILENAME = 'class_registry.yml'
+CLASS_RUN_SCHEME_CONFIGURATIONS_FILENAME = 'class_run_scheme_configurations.yml'
 
 #--------------------
 # Map Export Names

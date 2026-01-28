@@ -66,6 +66,16 @@ def extract_all(
         help="Input raster (jpg/png). If omitted, read from YAML.",
         rich_help_panel="I/O"
     ),
+    class_run_scheme_configurations_path: Optional[Path] = typer.Option(
+        None, "--class-run-scheme-configurations-path", "-r",
+        help="Path to class run scheme configurations YAML. If omitted, read from YAML.",
+        rich_help_panel="I/O"
+    ),
+    class_registry_path: Optional[Path] = typer.Option(
+        None, "--class-registry-path", "-s",
+        help="Path to class registry YAML. If omitted, read from YAML.",
+        rich_help_panel="I/O"
+    ),
     out_dir: Optional[Path] = typer.Option(
         None, "--out-dir", "-o",
         help="Output directory. If omitted, read from YAML.",
@@ -101,7 +111,10 @@ def extract_all(
 
     # Load YAML into a typed ExtractConfig, then merge with CLI flags
     tracing_cfg = read_config_file(config, kind="extract")  # type: ignore[arg-type]
+    
     info("override config with CLI args where provided...")
+    tracing_cfg.class_run_scheme_configurations_path = class_run_scheme_configurations_path or tracing_cfg.class_run_scheme_configurations_path
+    tracing_cfg.class_registry_path = class_registry_path or tracing_cfg.class_registry_path
     tracing_cfg.image = image or tracing_cfg.image
     tracing_cfg.out_dir = out_dir or tracing_cfg.out_dir
     
@@ -216,50 +229,33 @@ def extract_vector(
     logger = Logger(logfile_path=log_path)
 
     tracing_cfg = read_config_file(config, kind="extract")  # type: ignore[arg-type]
-    meta = load_config(
-        cfg_obj,
-        log_file=log_path,
-        verbose=verbose,
-        image=image,
-        out_dir=out_dir,
-        xmin=xmin,
-        ymin=ymin,
-        xmax=xmax,
-        ymax=ymax,
-        crs=crs,
-        min_area=min_area,
-        min_points=min_points,
-    )
-
+   
     info("Resolved configuration (extract-vector):")
-    for k, v in meta.items():
+    for k, v in tracing_cfg.__dict__.items():
         setting_config(f"  {k}: {v}")
-
-    img = Path(meta["image"]) if meta["image"] else None
-    out = Path(meta["out_dir"]) if meta["out_dir"] else None
 
     if dry_run:
         logger.teardown()
         raise typer.Exit()
 
-    if not img or not out:
+    if not tracing_cfg.image or not tracing_cfg.out_dir:
         error("image and out_dir are required (via YAML or flags).")
         logger.teardown()
         raise typer.Exit(code=2)
 
-    out.mkdir(parents=True, exist_ok=True)
+    tracing_cfg.out_dir.mkdir(parents=True, exist_ok=True)
 
     # Run vector extraction; files are written when verbose/out_dir are set
-    _even_gdf, _odd_gdf = tracing_pipeline.extract_vectors(img, meta, out_dir=out)
+    _even_gdf, _odd_gdf = tracing_pipeline.extract_vectors(tracing_cfg.image, tracing_cfg, out_dir=tracing_cfg.out_dir)
 
     results = {
-        "even_geojson": out / "even.geojson",
-        "odd_geojson": out / "odd.geojson",
+        "even_geojson": tracing_cfg.out_dir / "even.geojson",
+        "odd_geojson": tracing_cfg.out_dir / "odd.geojson",
     }
     for k, v in results.items():
         info(f"{k}: {v}")
 
-    success(f"Vector extraction completed successfully!, Outputs in: {out}")
+    success(f"Vector extraction completed successfully!, Outputs in: {tracing_cfg.out_dir}")
     logger.teardown()
 
 
@@ -296,46 +292,29 @@ def extract_raster(
     log_path = _resolve_log_path()
     logger = Logger(logfile_path=log_path)
 
-    cfg_obj = read_config_file(config, kind="extract")  # type: ignore[arg-type]
-    meta = load_config(
-        cfg_obj,
-        log_file=log_path,
-        verbose=verbose,
-        image=image,
-        out_dir=out_dir,
-        xmin=xmin,
-        ymin=ymin,
-        xmax=xmax,
-        ymax=ymax,
-        crs=crs,
-        min_area=min_area,
-        min_points=min_points,
-    )
-
+    tracing_cfg = read_config_file(config, kind="extract")  # type: ignore[arg-type]
+    
     info("Resolved configuration (extract-raster):")
-    for k, v in meta.items():
+    for k, v in tracing_cfg.__dict__.items():
         setting_config(f"  {k}: {v}")
-
-    img = Path(meta["image"]) if meta["image"] else None
-    out = Path(meta["out_dir"]) if meta["out_dir"] else None
 
     if dry_run:
         logger.teardown()
         raise typer.Exit()
 
-    if not img or not out:
+    if not tracing_cfg.image or not tracing_cfg.out_dir:
         error("image and out_dir are required (via YAML or flags).")
         logger.teardown()
         raise typer.Exit(code=2)
 
-    out.mkdir(parents=True, exist_ok=True)
+    tracing_cfg.out_dir.mkdir(parents=True, exist_ok=True)
 
     # Build class rasters from image path using the tracing pipeline
-    results = tracing_pipeline.extract_rasters(img, out, meta)
+    results = tracing_pipeline.extract_rasters(source=tracing_cfg.image, tracing_cfg=tracing_cfg, out_dir=tracing_cfg.out_dir)
     for k, v in results.items():
         info(f"{k}: {v}")
 
-    success(f"Raster extraction completed successfully!, Outputs in: {out}")
+    success(f"Raster extraction completed successfully!, Outputs in: {tracing_cfg.out_dir}")
     logger.teardown()
 
 

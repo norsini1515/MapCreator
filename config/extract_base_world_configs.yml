@@ -5,7 +5,8 @@
 # image: C:/Users/nicho/Documents/World Building/MapCreator/data/processed/test_data/test_centerline_outline_filled.png
 # image: C:/Users/nicho/Documents/World Building/MapCreator/data/raw/baselandmass_10282025.jpg
 image: C:/Users/nicho/Documents/World Building/MapCreator/data/raw/baseland_12182025_1.jpg
-class_config_path: C:/Users/nicho/Documents/World Building/MapCreator/config/class_configurations.yml
+class_run_scheme_configurations_path: C:/Users/nicho/Documents/World Building/MapCreator/config/class_run_scheme_configurations.yml
+class_registry_path: C:/Users/nicho/Documents/World Building/MapCreator/config/class_registry.yml
 out_dir: C:/Users/nicho/Documents/World Building/MapCreator/data/processed
 xmin: 0
 ymin: 0
