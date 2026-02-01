@@ -112,21 +112,21 @@ def extract_all(
     # Load YAML into a typed ExtractConfig, then merge with CLI flags
     tracing_cfg = read_config_file(config, kind="extract")  # type: ignore[arg-type]
     
-    info("override config with CLI args where provided...")
-    tracing_cfg.class_run_scheme_configurations_path = class_run_scheme_configurations_path or tracing_cfg.class_run_scheme_configurations_path
-    tracing_cfg.class_registry_path = class_registry_path or tracing_cfg.class_registry_path
-    tracing_cfg.image = image or tracing_cfg.image
-    tracing_cfg.out_dir = out_dir or tracing_cfg.out_dir
+    # info("override config with CLI args where provided...")
+    # tracing_cfg.class_run_scheme_configurations_path = class_run_scheme_configurations_path or tracing_cfg.class_run_scheme_configurations_path
+    # tracing_cfg.class_registry_path = class_registry_path or tracing_cfg.class_registry_path
+    # tracing_cfg.image = image or tracing_cfg.image
+    # tracing_cfg.out_dir = out_dir or tracing_cfg.out_dir
     
-    tracing_cfg.xmin = xmin if xmin is not None else tracing_cfg.xmin
-    tracing_cfg.ymin = ymin if ymin is not None else tracing_cfg.ymin
-    tracing_cfg.xmax = xmax if xmax is not None else tracing_cfg.xmax
-    tracing_cfg.ymax = ymax if ymax is not None else tracing_cfg.ymax
+    # tracing_cfg.xmin = xmin if xmin is not None else tracing_cfg.xmin
+    # tracing_cfg.ymin = ymin if ymin is not None else tracing_cfg.ymin
+    # tracing_cfg.xmax = xmax if xmax is not None else tracing_cfg.xmax
+    # tracing_cfg.ymax = ymax if ymax is not None else tracing_cfg.ymax
     
-    tracing_cfg.crs = crs or tracing_cfg.crs
-    tracing_cfg.min_area = min_area if min_area is not None else tracing_cfg.min_area
-    tracing_cfg.min_points = min_points if min_points is not None else tracing_cfg.min_points
-    tracing_cfg.verbose = verbose if verbose is not None else tracing_cfg.verbose
+    # tracing_cfg.crs = crs or tracing_cfg.crs
+    # tracing_cfg.min_area = min_area if min_area is not None else tracing_cfg.min_area
+    # tracing_cfg.min_points = min_points if min_points is not None else tracing_cfg.min_points
+    # tracing_cfg.verbose = verbose if verbose is not None else tracing_cfg.verbose
 
     if tracing_cfg.verbose:
         info("Resolved configuration:")

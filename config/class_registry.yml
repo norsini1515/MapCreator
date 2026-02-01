@@ -5,14 +5,16 @@ classes:
   base:
     defines:
       0: {name: Waterbody, color: "#8BBBEB"}
-      1: {name: Land,     color: "#A7C957"}
+      1: {name: Land,     color: "#DDFFBE"}
+      -1: {name: Default,  color: "#f5f2f2"}
   
   terrain:
     defines:
       0: {name: Waterbody, color: "#8BBBEB"}
-      1: {name: Land,     color: "#A7C957"}
-
+      1: {name: Land,     color: "#DDFFBE"}
+      -1: {name: Default,  color: "#f5f2f2"}
   climate:
     defines:
       0: {name: Waterbody, color: "#8BBBEB"}
-      1: {name: Land, color: "#A7C957"}
+      1: {name: Land, color: "#DDFFBE"}
+      -1: {name: Default,  color: "#f5f2f2"}

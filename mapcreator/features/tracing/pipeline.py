@@ -39,6 +39,7 @@ from pathlib import Path
 import sys
 from typing import Tuple, Union
 from attr import validate
+from cv2 import merge
 import numpy as np
 import geopandas as gpd
 import pandas as pd
@@ -285,16 +286,36 @@ def label_vectors(
 
     return classified_gdf
 
+def _get_merged_gdfs(class_config: ClassConfig,
+                      even_base_gdf: gpd.GeoDataFrame,
+                      odd_base_gdf: gpd.GeoDataFrame,
+                      verbose: bool = False,
+                    ) -> dict[str, gpd.GeoDataFrame]:
+    merged_vector_gdfs: dict[str, gpd.GeoDataFrame] = {}
+
+    for section_classification in class_config.get_run_scheme_sections():
+        even_id, even_def = class_config.resolve(section=section_classification, parity="even")
+        odd_id, odd_def = class_config.resolve(section=section_classification, parity="odd")
+        
+        if verbose:
+            info(f"[{section_classification}] even -> {even_id} ({even_def.name})")
+            info(f"[{section_classification}]  odd -> {odd_id} ({odd_def.name})")
+
+        even_gdf = label_vectors(even_base_gdf.copy(), even_def, verbose=verbose)
+        odd_gdf = label_vectors(odd_base_gdf.copy(), odd_def, verbose=verbose)
+        
+        merged_vector_gdfs[section_classification] = merge_gdfs([even_gdf, odd_gdf], verbose=verbose)
+    
+    return merged_vector_gdfs
+
 # --- Vector portion of the pipeline is done ---#
 
 # --- Raster portion of the pipeline --- #
 def extract_rasters(
-    source: Union[gpd.GeoDataFrame, Path],
+    source: Union[gpd.GeoDataFrame, Path, dict[str, gpd.GeoDataFrame]],
     out_dir: Path,
     tracing_cfg: ExtractConfig,
     class_config: ClassConfig | None = None,
-    even_cfg: dict | None = None,
-    odd_cfg: dict | None = None,
     *,
     add_parity: bool = True,
 ) -> dict[str, str]:
@@ -311,9 +332,9 @@ def extract_rasters(
     if class_config is None:
         class_config = read_class_resolver_from_extract(tracing_cfg) 
 
-    elif not class_config.validate():
-        error("Provided class configuration is invalid; aborting raster extraction.")
-        raise ValueError("Invalid class configuration provided.")
+    # elif not class_config.validate():
+    #     error("Provided class configuration is invalid; aborting raster extraction.")
+    #     raise ValueError("Invalid class configuration provided.")
     
     # Ensure output directory exists
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -330,24 +351,14 @@ def extract_rasters(
         # Extract base vectors once
         even_base_gdf, odd_base_gdf = extract_vectors(image, tracing_cfg, out_dir=out_dir, add_parity=add_parity)
         
-        # Resolve per-section definitions for even/odd
-        even_defs, odd_defs = class_config.get_even_odd_configs()  # dict[section -> (id, ClassDef)]
-        
-        for section in class_config.get_run_scheme_sections():
-            even_id, even_def = even_defs[section]
-            odd_id, odd_def = odd_defs[section]
-            
-            if verbose:
-                info(f"[{section}] even -> {even_id} ({even_def.name})")
-                info(f"[{section}]  odd -> {odd_id} ({odd_def.name})")
-
-            even_gdf = label_vectors(even_base_gdf.copy(), (even_id, even_def), verbose=verbose)
-            odd_gdf = label_vectors(odd_base_gdf.copy(), (odd_id, odd_def), verbose=verbose)
-            
-            merged_vector_gdfs[section] = merge_gdfs([even_gdf, odd_gdf], verbose=verbose)
+        #Label per section and merge
+        process_step("Labeling and merging vectors per section...")
+        merged_vector_gdfs = _get_merged_gdfs(class_config, even_base_gdf, odd_base_gdf, verbose=verbose)
 
     elif isinstance(source, dict):
         # Already have per-section merged GeoDataFrames
+        if verbose:
+            info(f"Using provided dict of {len(source)} merged GeoDataFrames for rasterization.")
         merged_vector_gdfs = {k: v.copy() for k, v in source.items()}
 
     elif isinstance(source, gpd.GeoDataFrame):
@@ -373,8 +384,8 @@ def extract_rasters(
     
 
     for section_name, merged_gdf  in merged_vector_gdfs.items():
-       # Build mappings from registry for this section
-        # class_mapping: id -> label/name
+        # Build mappings from registry for this section using ClassConfig.
+        # class_mapping: class label ("name" column) -> integer id
         # color_mapping: id -> hex color
         try:
             id_to_def = class_config.registry.defines[section_name]
@@ -383,7 +394,9 @@ def extract_rasters(
             raise ValueError(f"Section '{section_name}' not found in class registry. "
                              f"Available: {class_config.get_registry_sections()}")
 
-        class_mapping = {cid: ddef.name for cid, ddef in id_to_def.items()}
+        # Map from human-readable class name to numeric id for rasterization,
+        # and from id to color for the output colormap.
+        class_mapping = {ddef.name: cid for cid, ddef in id_to_def.items()}
         color_mapping = {cid: ddef.color for cid, ddef in id_to_def.items()}
 
         if verbose:
@@ -405,7 +418,9 @@ def extract_rasters(
             class_mapping=class_mapping,
             color_mapping=color_mapping,
             section=section_name,
-            class_col="class",
+            # label_vectors stores the resolved class name under the "name"
+            # column for each geometry; this is what we map back to ids.
+            class_col="name",
         )
         raster_paths[section_name] = str(raster_path)
 
@@ -427,30 +442,37 @@ def extract_all(
     Only writes if out_dir is specified or verbose mode is on.
     """
     process_step(f"Starting full extraction pipeline for {image.name}...")
-
+    print(tracing_cfg.verbose)
+    print(bool(tracing_cfg.verbose))
     verbose = bool(tracing_cfg.verbose)
     if verbose:
-        info(f"Verbose mode is on.")
+        setting_config(f"Verbose mode is on.")
         
     out_dir, write_outputs = _validate_output_dir_meta(tracing_cfg, out_dir, 'full_extraction')
     
     if write_outputs:
         info(f"Output files will be written to {out_dir}")
+    
+    if verbose:
+        process_step(f"Extracting base vectors from image {image.name}...")
+    # Extract base vectors once
+    even_base_gdf, odd_base_gdf = extract_vectors(image, tracing_cfg, out_dir=out_dir, add_parity=add_parity)
 
     # Load configuration and derive default even/odd defs if not provided
-    class_cfg = load_class_config(tracing_cfg)
-    even_cfg, odd_cfg = get_even_odd_configs(class_cfg)
+    class_cfg = read_class_resolver_from_extract(tracing_cfg)
 
-    even_gdf, odd_gdf = extract_vectors(image, tracing_cfg, out_dir=out_dir, add_parity=add_parity)
+    # Label per section and merge
+    merged_vector_gdfs: dict[str, gpd.GeoDataFrame] = {}
+    if verbose:
+        info(f"class_cfg.get_run_scheme_sections(): {class_cfg.get_run_scheme_sections()}")
 
-    even_gdf = label_vectors(even_gdf, even_cfg, verbose=verbose)
-    odd_gdf  = label_vectors(odd_gdf, odd_cfg, verbose=verbose)
+    process_step("Labeling and merging vectors per section...")
+    merged_vector_gdfs = _get_merged_gdfs(class_cfg, even_base_gdf, odd_base_gdf, verbose=verbose)
     
-    merged_gdf = merge_gdfs([even_gdf, odd_gdf], verbose=verbose)
-    sys.exit("Debug exit after merging GeoDataFrames.")
-
+    # Rasterize per section
     if write_outputs and out_dir is not None:
-        raster_paths = extract_rasters(merged_gdf, out_dir, tracing_cfg, class_config=class_cfg, even_cfg=even_cfg, odd_cfg=odd_cfg)
+        process_step("Rasterizing per section...")
+        raster_paths = extract_rasters(merged_vector_gdfs, out_dir, tracing_cfg, class_config=class_cfg)
     else:
         warn("Outputs disabled (no out_dir and verbosity off); skipping rasterization.")
         raster_paths = {}

@@ -50,9 +50,10 @@ def merge_gdfs(gdfs: gpd.GeoDataFrame|List[gpd.GeoDataFrame],
 
     if verbose:
         from matplotlib import pyplot as plt
+        info(f"Merged GDF: {len(merged_gdf)} features, CRS: {merged_gdf.crs}, shape {merged_gdf.shape}")
+        info(f"Columns: {merged_gdf.columns.tolist()}\n")
 
-        info(f"Merged GDF: {len(merged_gdf)} features, CRS: {merged_gdf.crs}, shape {merged_gdf.shape}\n")
-        merged_gdf.plot(column="class", legend=True)
+        merged_gdf.plot(column="name", legend=True)
         plt.show()
 
     return merged_gdf

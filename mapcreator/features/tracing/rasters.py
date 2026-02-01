@@ -182,7 +182,7 @@ def build_class_raster(
     """
     out_dir.mkdir(parents=True, exist_ok=True)
     transform = _transform_from_extent(width, height, extent)
-
+    
     label = section or "<unnamed>"
     setting_config("Using class mapping for section '%s':" % label)
     setting_config(f"  classes: {class_mapping}")
