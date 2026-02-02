@@ -16,5 +16,6 @@ crs: EPSG:3857
 min_points: 3
 min_area: 5.0
 log_file_name: "extract_all_{now:%Y-%m-%d_%H-%M-%S}"
+# verbose: True
 verbose: False
 compute_extent_polygons: True #true by default but specified here for clarity, if false no ocean in the base case.

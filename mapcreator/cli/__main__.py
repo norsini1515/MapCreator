@@ -33,9 +33,10 @@ app = typer.Typer(no_args_is_help=True)
 # import AFTER helpers so the module loads cleanly
 from mapcreator.features.tracing import pipeline as tracing_pipeline
 from mapcreator.globals.logutil import Logger, info, warn, error, success, process_step, setting_config
-from mapcreator.globals import directories, configs
+from mapcreator.globals import directories, configs, export_gdfs
 from mapcreator.globals.config_models import ExtractConfig, read_config_file
 from mapcreator.features.tracing.reclass import burn_polygons_into_class_raster, apply_palette_from_yaml
+
 
 # DEFAULT_CONFIG_FILE_PATH
 DEFAULT_CONFIG_FILE_PATH = directories.CONFIG_DIR / configs.IMAGE_TRACING_EXTRACT_CONFIGS_FILENAME
@@ -198,30 +199,14 @@ def extract_image(
 @app.command("extract-vector")
 def extract_vector(
     # I/O
-    config: Optional[Path] = typer.Option(
-        DEFAULT_CONFIG_FILE_PATH, "--config", "-c",
+    config: Optional[Path] = typer.Option(DEFAULT_CONFIG_FILE_PATH, "--config", "-c",
         help="YAML file with parameters. Flags override YAML.",
         rich_help_panel="I/O",
     ),
-    image: Optional[Path] = typer.Option(
-        None, "--image", "-i",
-        help="Input raster (jpg/png). If omitted, read from YAML.",
-        rich_help_panel="I/O",
+    build_labels: bool = typer.Option(False, "--build-labels", 
+        help="Build vector labels from class registry.", 
+        rich_help_panel="Utility"
     ),
-    out_dir: Optional[Path] = typer.Option(
-        None, "--out-dir", "-o",
-        help="Output directory. If omitted, read from YAML.",
-        rich_help_panel="I/O",
-    ),
-    xmin: Optional[float] = typer.Option(None, "--xmin", help="Extent min X", rich_help_panel="World grid"),
-    ymin: Optional[float] = typer.Option(None, "--ymin", help="Extent min Y", rich_help_panel="World grid"),
-    xmax: Optional[float] = typer.Option(None, "--xmax", help="Extent max X", rich_help_panel="World grid"),
-    ymax: Optional[float] = typer.Option(None, "--ymax", help="Extent max Y", rich_help_panel="World grid"),
-    crs: Optional[str] = typer.Option(None, "--crs", help="Output CRS (e.g., 'EPSG:3857')", rich_help_panel="World grid"),
-    min_area: Optional[float] = typer.Option(None, "--min-area", help="Min polygon area (pre-affine)", rich_help_panel="Geometry filters"),
-    min_points: Optional[int] = typer.Option(None, "--min-points", help="Min ring vertices", rich_help_panel="Geometry filters"),
-    dry_run: bool = typer.Option(False, "--dry-run", help="Print resolved config and exit", rich_help_panel="Utility"),
-    verbose: bool = typer.Option(False, "--verbose", help="Enable verbose logging", rich_help_panel="Utility"),
 ):
     """Extract only vector products (land, waterbody, merged polygons)."""
 
@@ -234,10 +219,6 @@ def extract_vector(
     for k, v in tracing_cfg.__dict__.items():
         setting_config(f"  {k}: {v}")
 
-    if dry_run:
-        logger.teardown()
-        raise typer.Exit()
-
     if not tracing_cfg.image or not tracing_cfg.out_dir:
         error("image and out_dir are required (via YAML or flags).")
         logger.teardown()
@@ -246,14 +227,33 @@ def extract_vector(
     tracing_cfg.out_dir.mkdir(parents=True, exist_ok=True)
 
     # Run vector extraction; files are written when verbose/out_dir are set
-    _even_gdf, _odd_gdf = tracing_pipeline.extract_vectors(tracing_cfg.image, tracing_cfg, out_dir=tracing_cfg.out_dir)
+    even_gdf, odd_gdf = tracing_pipeline.extract_vectors(tracing_cfg.image, tracing_cfg, out_dir=tracing_cfg.out_dir)
 
     results = {
         "even_geojson": tracing_cfg.out_dir / "even.geojson",
         "odd_geojson": tracing_cfg.out_dir / "odd.geojson",
     }
-    for k, v in results.items():
-        info(f"{k}: {v}")
+    
+    if build_labels:
+        if tracing_cfg.verbose:
+            process_step("Building vector labels from class registry...")
+        
+        merged_vector_gdfs = tracing_pipeline.label_and_merge_by_section(
+                                tracing_cfg=tracing_cfg,
+                                even_base_gdf=even_gdf, 
+                                odd_base_gdf=odd_gdf
+                            )
+        export_gdfs(merged_vector_gdfs, tracing_cfg.out_dir / "labeled_vectors", verbose=tracing_cfg.verbose)
+        
+        results.update({
+            f"{section}_geojson": tracing_cfg.out_dir / "labeled_vectors" / f"{section}.geojson"
+            for section in merged_vector_gdfs.keys()
+        })
+
+    if tracing_cfg.verbose:
+        for k, v in results.items():
+            info(f"{k}: {v}")
+
 
     success(f"Vector extraction completed successfully!, Outputs in: {tracing_cfg.out_dir}")
     logger.teardown()

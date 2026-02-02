@@ -27,6 +27,7 @@ def _ensure_crs(gdf, crs):
 
 def merge_gdfs(gdfs: gpd.GeoDataFrame|List[gpd.GeoDataFrame], 
                verbose:bool = False,
+               debug_plot_cool:str = "name"
             ) -> gpd.GeoDataFrame:
     
     """Merge multiple GeoDataFrames into one, ensuring non-empty and consistent CRS."""
@@ -53,7 +54,11 @@ def merge_gdfs(gdfs: gpd.GeoDataFrame|List[gpd.GeoDataFrame],
         info(f"Merged GDF: {len(merged_gdf)} features, CRS: {merged_gdf.crs}, shape {merged_gdf.shape}")
         info(f"Columns: {merged_gdf.columns.tolist()}\n")
 
-        merged_gdf.plot(column="name", legend=True)
+        if debug_plot_cool not in merged_gdf.columns:
+            warn(f"debug_plot_cool '{debug_plot_cool}' not in columns; defaulting to first column.")
+            debug_plot_cool = merged_gdf.columns[0]
+            
+        merged_gdf.plot(column=debug_plot_cool, legend=True)
         plt.show()
 
     return merged_gdf
