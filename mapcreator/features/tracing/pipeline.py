@@ -156,7 +156,6 @@ def extract_vectors(
         tracing_cfg: ExtractConfig,
         *,
         out_dir: Path|None = None,
-        add_parity: bool = True,
     ) -> Tuple[gpd.GeoDataFrame, gpd.GeoDataFrame]:
     """Extract land/water polygons from a binary mask or image.
 
@@ -230,8 +229,8 @@ def extract_vectors(
     even_gdf = polygons_to_gdf(even_polys, crs=crs_val, affine_val=affine_val)
     odd_gdf = polygons_to_gdf(odd_polys, crs=crs_val, affine_val=affine_val)
     
-    even_gdf["parity"] = "even" if add_parity else "none"
-    odd_gdf["parity"] = "odd" if add_parity else "none"
+    even_gdf["parity"] = "even" if tracing_cfg.add_parity else "none"
+    odd_gdf["parity"] = "odd" if tracing_cfg.add_parity else "none"
     
     success("Constructed GeoDataFrames from polygons.")
 
@@ -298,7 +297,7 @@ def label_and_merge_by_section(
 
     if class_config is None:
         class_config = read_class_resolver_from_extract(tracing_cfg) 
-
+    
     for section_classification in class_config.get_run_scheme_sections():
         even_id, even_def = class_config.resolve(section=section_classification, parity="even")
         odd_id, odd_def = class_config.resolve(section=section_classification, parity="odd")
@@ -318,12 +317,11 @@ def label_and_merge_by_section(
 
 # --- Raster portion of the pipeline --- #
 def extract_rasters(
+    *,
     source: Union[gpd.GeoDataFrame, Path, dict[str, gpd.GeoDataFrame]],
     out_dir: Path | None,
     tracing_cfg: ExtractConfig,
     class_config: ClassConfig | None = None,
-    *,
-    add_parity: bool = True,
 ) -> dict[str, str]:
     """Build one class raster per section (base/terrain/climate/...) using ClassResolver.
 
@@ -353,7 +351,7 @@ def extract_rasters(
         process_step(f"Starting raster extraction from image {image.name}...")
         
         # Extract base vectors once
-        even_base_gdf, odd_base_gdf = extract_vectors(image, tracing_cfg, out_dir=out_dir, add_parity=add_parity)
+        even_base_gdf, odd_base_gdf = extract_vectors(img=image, tracing_cfg=tracing_cfg, out_dir=out_dir)
         
         #Label per section and merge
         process_step("Labeling and merging vectors per section...")
@@ -463,7 +461,7 @@ def extract_all(
     # Extract vectors
     process_step(f"Extracting base vectors from image {image.name}...")
     # Extract base vectors once
-    even_base_gdf, odd_base_gdf = extract_vectors(image, tracing_cfg, out_dir=out_dir, add_parity=add_parity)
+    even_base_gdf, odd_base_gdf = extract_vectors(img=image, tracing_cfg=tracing_cfg, out_dir=out_dir)
     # Load configuration and derive default even/odd defs if not provided
     class_config = read_class_resolver_from_extract(tracing_cfg)
     # Label per section and merge
@@ -488,7 +486,10 @@ def extract_all(
     # ------------------------------------------------------------------
     # Rasterize per section
     process_step("Rasterizing per section...")
-    raster_paths = extract_rasters(merged_vector_gdfs, out_dir/'rasters', tracing_cfg, class_config=class_config)
+    raster_paths = extract_rasters(source=merged_vector_gdfs, 
+                                   out_dir=out_dir/'rasters', 
+                                   tracing_cfg=tracing_cfg, 
+                                   class_config=class_config)
     
     # For now we only report raster outputs; vector files (even/odd) are
     # written by extract_vectors when outputs are enabled.

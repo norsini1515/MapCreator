@@ -158,11 +158,12 @@ class ExtractConfig:
     crs: str = "EPSG:3857"
     min_points: int | None = configs.MIN_POINTS
     min_area: float | None = configs.MIN_AREA
+    compute_extent_polygons: bool = True
+    add_parity: bool = True
 
     #logging
     log_file_name: str | None = None
     verbose: bool | str = False #accepts debug, info
-    compute_extent_polygons: bool | None = None
   
 # class_id, class_def = class_cfg.resolve(section="terrain", parity="odd")
 # class_id -> 0
@@ -268,7 +269,8 @@ def build_extract_config(raw: Dict[str, Any]) -> ExtractConfig:
         min_area=raw.get("min_area"),
         log_file_name=raw.get("log_file_name"),
         verbose=raw.get("verbose", False),
-        compute_extent_polygons=raw.get("compute_extent_polygons"),
+        compute_extent_polygons=raw.get("compute_extent_polygons", True),
+        add_parity=raw.get("add_parity", True),
     )
     # print("verbose:",raw.get("verbose"))
     # print("extract_cfg.verbose:",extract_cfg.verbose)

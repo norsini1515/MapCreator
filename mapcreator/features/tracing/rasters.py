@@ -128,7 +128,7 @@ def _write_colormapped(path: Path, array: np.ndarray, *, crs, transform, colorma
 
 def build_class_raster(
     vector_gdf: gpd.GeoDataFrame,
-    out_dir: Path,
+    out_dir: Path | None,
     *,
     width: int,
     height: int,
@@ -180,7 +180,9 @@ def build_class_raster(
     Path
         Path to the written raster file.
     """
-    out_dir.mkdir(parents=True, exist_ok=True)
+    if out_dir is not None:
+        out_dir.mkdir(parents=True, exist_ok=True)
+
     transform = _transform_from_extent(width, height, extent)
     
     label = section or "<unnamed>"
@@ -206,10 +208,9 @@ def build_class_raster(
 
     if raster_name is None:
         raster_name = f"{label}_class_map.tif"
-
-    raster_path = out_dir / raster_name
-
-    _write_colormapped(raster_path, arr, crs=crs, transform=transform, colormap=color_mapping, dtype=dtype)
+    if out_dir is not None:
+        raster_path = out_dir / raster_name
+        _write_colormapped(raster_path, arr, crs=crs, transform=transform, colormap=color_mapping, dtype=dtype)
 
     return raster_path
 
