@@ -161,13 +161,25 @@ def apply_style(fig, style="fantasy"):
     return fig
 
 if __name__ == '__main__':
-    shapefile_name = 'land_042325'
-    shapefile_path = directories.SHAPEFILES_DIR / f"{shapefile_name}.shp"
-    gdf = gpd.read_file(shapefile_path)
+    import matplotlib.pyplot as plt
+    geojson_path = Path("C:/Users/nicho/Documents/World Building/MapCreator/data/processed/vectors")
+    file = "base_20260202_2212.geojson"
+    geojson_path = geojson_path / file
+    gdf = gpd.read_file(geojson_path)
     print(gdf.columns.tolist())
     print(gdf.head(5))
-    # exit()
-    fig = plot_shapes(gdf)
 
-    html_path = directories.TEMP_FILES_DIR / f"{shapefile_name}.html"
-    viewing_util.save_figure_to_html(fig, html_path, open_on_export=True)
+    
+    ax = gdf.plot(
+        color=gdf["color"],
+        edgecolor="black",
+        linewidth=0.2
+    )
+    plt.show()
+
+
+    # exit()
+    # fig = plot_shapes(gdf)
+
+    # html_path = directories.TEMP_FILES_DIR / f"{shapefile_name}.html"
+    # viewing_util.save_figure_to_html(fig, html_path, open_on_export=True)
