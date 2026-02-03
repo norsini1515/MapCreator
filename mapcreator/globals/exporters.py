@@ -1,11 +1,18 @@
 from pathlib import Path
+
+from cv2 import add
 from mapcreator.globals.logutil import (
     info, process_step, error, setting_config, success
 )
 import geopandas as gpd
+import datetime
 
-def export_gdf(gdf: gpd.GeoDataFrame, path: Path, verbose:bool|str=False) -> None:
-    path = Path(path); path.parent.mkdir(parents=True, exist_ok=True)
+def export_gdf(gdf: gpd.GeoDataFrame, path: Path, verbose:bool|str=False, add_time_stamp:bool=False) -> None:
+    if add_time_stamp:
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M")
+        path = path.with_name(f"{path.stem}_{timestamp}{path.suffix}")
+    
+    path.parent.mkdir(parents=True, exist_ok=True)
     ext = path.suffix.lower()
     driver = "GeoJSON" if ext == ".geojson" else "ESRI Shapefile" if ext == ".shp" else None
     
@@ -16,9 +23,12 @@ def export_gdf(gdf: gpd.GeoDataFrame, path: Path, verbose:bool|str=False) -> Non
     
     gdf.to_file(path, driver=driver)
 
-def export_gdfs(gdf_dict: dict[str, gpd.GeoDataFrame], out_dir: Path, verbose:bool|str=False) -> None:
+def export_gdfs(gdf_dict: dict[str, gpd.GeoDataFrame], out_dir: Path, verbose:bool|str=False, add_time_stamp:bool=False) -> None:
     out_dir = Path(out_dir); out_dir.mkdir(parents=True, exist_ok=True)
     
     for name, gdf in gdf_dict.items():
         path = out_dir / f"{name}.geojson"
-        export_gdf(gdf, path, verbose=verbose)
+        export_gdf(gdf, path, verbose=verbose, add_time_stamp=add_time_stamp)
+
+if __name__ == "__main__":
+    print(datetime.datetime.now().strftime("%m%d%Y_%H%M"))

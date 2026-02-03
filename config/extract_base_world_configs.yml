@@ -1,12 +1,13 @@
 # configs/world1.yml
-# image: C:/Users/nicho/Documents/World Building/MapCreator/data/raw/baseland_12182025_1.jpg
-# class_run_scheme_configurations_path: C:/Users/nicho/Documents/World Building/MapCreator/config/class_run_scheme_configurations.yml
-# class_registry_path: C:/Users/nicho/Documents/World Building/MapCreator/config/class_registry.yml
-# out_dir: C:/Users/nicho/Documents/World Building/MapCreator/data/processed
-image: P:/GitLab/orsin005/miscellaneous/MapCreator/data/raw/baseland_12182025_1.jpg
-class_run_scheme_configurations_path: P:/GitLab/orsin005/miscellaneous/MapCreator/config/class_run_scheme_configurations.yml
-class_registry_path: P:/GitLab/orsin005/miscellaneous/MapCreator/config/class_registry.yml
-out_dir: P:/GitLab/orsin005/miscellaneous/MapCreator/data/processed
+image: C:/Users/nicho/Documents/World Building/MapCreator/data/raw/baseland_12182025_1.jpg
+# image: C:/Users/nicho/Documents/World Building/MapCreator/data/raw/baselandmass_10282025.jpg
+class_run_scheme_configurations_path: C:/Users/nicho/Documents/World Building/MapCreator/config/class_run_scheme_configurations.yml
+class_registry_path: C:/Users/nicho/Documents/World Building/MapCreator/config/class_registry.yml
+out_dir: C:/Users/nicho/Documents/World Building/MapCreator/data/processed
+# image: P:/GitLab/orsin005/miscellaneous/MapCreator/data/raw/baseland_12182025_1.jpg
+# class_run_scheme_configurations_path: P:/GitLab/orsin005/miscellaneous/MapCreator/config/class_run_scheme_configurations.yml
+# class_registry_path: P:/GitLab/orsin005/miscellaneous/MapCreator/config/class_registry.yml
+# out_dir: P:/GitLab/orsin005/miscellaneous/MapCreator/data/processed
 xmin: 0
 ymin: 0
 xmax: 3800
@@ -18,4 +19,4 @@ log_file_name: "extract_all_{now:%Y-%m-%d_%H-%M-%S}"
 # verbose: True
 verbose: False
 compute_extent_polygons: True #true by default but specified here for clarity, if false no ocean in the base case.
-add_parity: False #true by default, if false parity will be None (one classification)
+add_parity: True #true by default, if false parity will be None (one classification)

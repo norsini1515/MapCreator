@@ -240,8 +240,8 @@ def extract_vectors(
         even_path = out_dir / f"vectors/even.geojson"
         odd_path = out_dir / f"vectors/odd.geojson"
 
-        export_gdf(even_gdf, even_path, verbose=tracing_cfg.verbose)
-        export_gdf(odd_gdf, odd_path, verbose=tracing_cfg.verbose)
+        export_gdf(even_gdf, even_path, verbose=tracing_cfg.verbose, add_time_stamp=True)
+        export_gdf(odd_gdf, odd_path, verbose=tracing_cfg.verbose, add_time_stamp=True)
 
     return even_gdf, odd_gdf
 
@@ -299,8 +299,11 @@ def label_and_merge_by_section(
         class_config = read_class_resolver_from_extract(tracing_cfg) 
     
     for section_classification in class_config.get_run_scheme_sections():
-        even_id, even_def = class_config.resolve(section=section_classification, parity="even")
-        odd_id, odd_def = class_config.resolve(section=section_classification, parity="odd")
+        even_parity = "even" if tracing_cfg.add_parity else "none"
+        odd_parity = "odd" if tracing_cfg.add_parity else "none"
+        
+        even_id, even_def = class_config.resolve(section=section_classification, parity=even_parity)
+        odd_id, odd_def = class_config.resolve(section=section_classification, parity=odd_parity)
         
         if verbose:
             info(f"[{section_classification}] even -> {even_id} ({even_def.name})")
@@ -478,7 +481,7 @@ def extract_all(
                             )
     
     if write_outputs and out_dir is not None:
-        export_gdfs(merged_vector_gdfs, out_dir / "vectors", verbose=tracing_cfg.verbose)
+        export_gdfs(merged_vector_gdfs, out_dir / "vectors", verbose=tracing_cfg.verbose, add_time_stamp=True)
     else:
         warn("Outputs disabled (no out_dir and verbosity off); skipping rasterization.")
         raster_paths = {}
