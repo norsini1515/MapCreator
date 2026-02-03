@@ -13,9 +13,42 @@ from rasterio.transform import from_bounds
 from typing import Dict, Tuple
 from rasterio.features import rasterize
 from pathlib import Path
+import geopandas as gpd
 
 #package imports
-from mapcreator.globals.logutil import info, error, process_step, success, setting_config
+from mapcreator.globals.logutil import info, error, process_step, success, setting_config, warn
+
+def get_default_raster_class_config() -> dict:
+    """Return a minimal default raster class configuration.
+
+    The structure mirrors the expected YAML layout used elsewhere:
+
+    - ``classes``: mapping of section name -> {class_label -> class_id}
+    - ``colors``:  mapping of section name -> {class_id -> hex_color}
+
+    This default keeps things simple with three high‑level sections
+    (``base``, ``terrain``, ``climate``) that all share the same mappings.
+    """
+    classes_base = {"waterbody": 0, "ocean": 0, "land": 1}
+    classes_terrain = classes_base.copy()
+    classes_climate = classes_base.copy()
+    
+    colors_base = {0: "#8BBBEB", 1: "#DDFFBE"}
+    colors_terrain = colors_base
+    colors_climate = colors_base
+
+    return {
+        "classes": {
+            "base": classes_base,
+            "terrain": classes_terrain,
+            "climate": classes_climate,
+        },
+        "colors": {
+            "base": colors_base,
+            "terrain": colors_terrain,
+            "climate": colors_climate,
+        }
+    }
 
 #-- RASTERIZATION HELPERS --#
 def _transform_from_extent(width: int, height: int, extent: dict):
@@ -28,8 +61,9 @@ def _transform_from_extent(width: int, height: int, extent: dict):
         extent["xmax"], extent["ymax"],
         width, height,
     )
+
 def _class_id_raster(
-    gdf,
+    gdf: gpd.GeoDataFrame,
     *,
     width: int,
     height: int,
@@ -37,18 +71,24 @@ def _class_id_raster(
     class_col: str,
     class_to_id: Dict[str, int],
     dtype: str = "uint8",
+    verbose: bool = False,
 ):
     """Rasterize GDF once into integer class ids."""
     if gdf is None or gdf.empty:
         return np.zeros((height, width), dtype=dtype)
     # normalize mapping keys to handle case/spacing
     _map = {str(k).strip().lower(): int(v) for k, v in class_to_id.items()}
+    
+    if verbose:
+        info(f"Rasterizing {len(gdf)} geometries with class mapping: {_map}")
+
     shapes = (
         (geom, _map.get(str(cls).strip().lower(), 0))
         for geom, cls in zip(gdf.geometry, gdf[class_col])
         if geom is not None and not geom.is_empty
     )
     transform = _transform_from_extent(width, height, extent)
+
     return rasterize(
         shapes=shapes,
         out_shape=(height, width),
@@ -84,9 +124,98 @@ def _write_colormapped(path: Path, array: np.ndarray, *, crs, transform, colorma
             cmap = {int(k): _hex_to_rgb(v) for k, v in colormap.items()}
             dst.write_colormap(1, cmap)
 
-#-- HIGH-LEVEL RASTER CREATION --#
+ #-- HIGH-LEVEL RASTER CREATION --#
+
+def build_class_raster(
+    vector_gdf: gpd.GeoDataFrame,
+    out_dir: Path | None,
+    *,
+    width: int,
+    height: int,
+    extent: dict,
+    crs,
+    class_mapping: Dict[str, int],
+    color_mapping: Dict[int, str] | None = None,
+    section: str | None = None,
+    class_col: str = "class",
+    dtype: str = "uint8",
+    raster_name: str | None = None,
+):
+    """Rasterize a single class mapping into one colormapped GeoTIFF.
+
+    Parameters
+    ----------
+    vector_gdf
+        GeoDataFrame containing the geometries and a class column.
+    out_dir
+        Directory where the output raster will be written.
+    width, height
+        Raster dimensions in pixels.
+    extent
+        Dict with keys ``xmin``, ``ymin``, ``xmax``, ``ymax`` describing the
+        spatial bounds of the raster in the target CRS.
+    crs
+        Coordinate reference system for the output raster (anything
+        rasterio understands).
+    class_mapping
+        Mapping from class label (as stored in ``class_col``) to integer id
+        to burn into the raster.
+    color_mapping
+        Optional mapping from integer id to hex color (e.g. ``{"1": "#FF00FF"}``).
+        If provided, it is written as a palette colormap on the output.
+    section
+        Optional human‑readable name for logging and default filename
+        construction (for example ``"base"``, ``"terrain"``, ``"climate"``).
+    class_col
+        Column in ``vector_gdf`` holding class labels to be mapped to
+        integer ids.
+    dtype
+        Numpy dtype for the raster, default ``"uint8"``.
+    raster_name
+        Optional filename for the output. If omitted, defaults to
+        ``f"{section}_class_map.tif"``.
+
+    Returns
+    -------
+    Path
+        Path to the written raster file.
+    """
+    if out_dir is not None:
+        out_dir.mkdir(parents=True, exist_ok=True)
+
+    transform = _transform_from_extent(width, height, extent)
+    
+    label = section or "<unnamed>"
+    setting_config("Using class mapping for section '%s':" % label)
+    setting_config(f"  classes: {class_mapping}")
+    setting_config(f"  colors: {color_mapping}")
+
+    # Build raster for this section
+    arr = _class_id_raster(
+        vector_gdf,
+        width=width,
+        height=height,
+        extent=extent,
+        class_col=class_col,
+        class_to_id=class_mapping,
+        dtype=dtype,
+    )
+    try:
+        vals, counts = np.unique(arr, return_counts=True)
+        info(f"{label}_class_map values: {dict(zip(vals.tolist(), counts.tolist()))}")
+    except Exception:
+        pass
+
+    if raster_name is None:
+        raster_name = f"{label}_class_map.tif"
+    if out_dir is not None:
+        raster_path = out_dir / raster_name
+        _write_colormapped(raster_path, arr, crs=crs, transform=transform, colormap=color_mapping, dtype=dtype)
+
+    return raster_path
+
 def make_class_rasters(
-    merged_gdf,
+    merged_gdf: gpd.GeoDataFrame,
     out_dir: Path,
     *,
     width: int,
@@ -97,80 +226,39 @@ def make_class_rasters(
     class_col: str = "class",
     dtype: str = "uint8",
 ):
-    """Create three rasters from merged_gdf using class mappings/colors:
-       - world_class_map.tif (base)
-       - terrain_class_map.tif (terrain)
-       - climate_class_map.tif (climate)
+    """Convenience wrapper to build the standard three class rasters.
 
-       class_config is expected to have keys 'classes' and 'colors' with nested
-       sections 'base', 'terrain', 'climate'.
+    This preserves the previous behavior of returning three rasters
+    (world/terrain/climate) while delegating the actual work to
+    :func:`build_class_raster`. New code that needs more flexibility can
+    call :func:`build_class_raster` directly in a loop with arbitrary
+    section names.
     """
-    out_dir.mkdir(parents=True, exist_ok=True)
-    transform = _transform_from_extent(width, height, extent)
+    if not class_config:
+        class_config = get_default_raster_class_config()
 
-    # Defaults if config not provided
-    classes_base = {"waterbody": 0, "ocean": 0, "land": 1}
-    classes_terrain = classes_base.copy()
-    classes_climate = classes_base.copy()
-    colors_base = {0: "#8BBBEB", 1: "#DDFFBE"}
-    colors_terrain = colors_base
-    colors_climate = colors_base
+    classes = class_config.get("classes", {})
+    colors = class_config.get("colors", {})
+    tif_paths = {}
+    for class_name, mapping in classes.items():
+        if class_name not in colors:
+            warn(f"No color mapping found for class '{class_name}'; output will be uncolored.")
 
-    if class_config:
-        classes = class_config.get("classes", {})
-        colors = class_config.get("colors", {})
-        classes_base = classes.get("base", classes_base)
-        classes_terrain = classes.get("terrain", classes_terrain)
-        classes_climate = classes.get("climate", classes_climate)
-        colors_base = colors.get("base", colors_base)
-        colors_terrain = colors.get("terrain", colors_terrain)
-        colors_climate = colors.get("climate", colors_climate)
+        path = build_class_raster(
+            merged_gdf,
+            out_dir,
+            width=width,
+            height=height,
+            extent=extent,
+            crs=crs,
+            class_mapping=mapping,
+            color_mapping=colors.get(class_name),
+            section=class_name,
+            class_col=class_col,
+            dtype=dtype,
+            raster_name=f"{class_name}_class_map.tif",
+        )
+        info(f"Raster for section '{class_name}' written to: {path}")    
+        tif_paths[class_name] = path
 
-    setting_config("Using class mappings:")
-    setting_config(f"  base: {classes_base}")
-    setting_config(f"  terrain: {classes_terrain}")
-    setting_config(f"  climate: {classes_climate}")
-    setting_config("Using color mappings:")
-    setting_config(f"  base: {colors_base}")
-    setting_config(f"  terrain: {colors_terrain}")
-    setting_config(f"  climate: {colors_climate}")
-
-    # Build rasters
-    base_arr = _class_id_raster(
-        merged_gdf, width=width, height=height, extent=extent,
-        class_col=class_col, class_to_id=classes_base, dtype=dtype
-    )
-    try:
-        vals, counts = np.unique(base_arr, return_counts=True)
-        info(f"world_class_map values: {dict(zip(vals.tolist(), counts.tolist()))}")
-    except Exception:
-        pass
-    terrain_arr = _class_id_raster(
-        merged_gdf, width=width, height=height, extent=extent,
-        class_col=class_col, class_to_id=classes_terrain, dtype=dtype
-    )
-    try:
-        vals, counts = np.unique(terrain_arr, return_counts=True)
-        info(f"terrain_class_map values: {dict(zip(vals.tolist(), counts.tolist()))}")
-    except Exception:
-        pass
-    climate_arr = _class_id_raster(
-        merged_gdf, width=width, height=height, extent=extent,
-        class_col=class_col, class_to_id=classes_climate, dtype=dtype
-    )
-    try:
-        vals, counts = np.unique(climate_arr, return_counts=True)
-        info(f"climate_class_map values: {dict(zip(vals.tolist(), counts.tolist()))}")
-    except Exception:
-        pass
-
-    world_path = out_dir / "world_class_map.tif"
-    terrain_path = out_dir / "terrain_class_map.tif"
-    climate_path = out_dir / "climate_class_map.tif"
-
-    # Write rasters with colormaps
-    _write_colormapped(world_path, base_arr, crs=crs, transform=transform, colormap=colors_base, dtype=dtype)
-    _write_colormapped(terrain_path, terrain_arr, crs=crs, transform=transform, colormap=colors_terrain, dtype=dtype)
-    _write_colormapped(climate_path, climate_arr, crs=crs, transform=transform, colormap=colors_climate, dtype=dtype)
-
-    return world_path, terrain_path, climate_path
+    return tif_paths

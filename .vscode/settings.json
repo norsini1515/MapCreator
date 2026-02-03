@@ -1,4 +1,26 @@
 {
+    // -----------------------------
+    // Python / Pylance behavior
+    // -----------------------------
+  "python.analysis.typeCheckingMode": "basic",
+
+  "python.analysis.diagnosticSeverityOverrides": {
+    "reportOptionalMemberAccess": "none",
+    "reportOptionalCall": "none",
+    "reportOptionalOperand": "none",
+    "reportUnusedImport": "warning",
+    "reportGeneralTypeIssues": "warning"
+  },
+
+  "python.analysis.autoImportCompletions": true,
+  "python.analysis.useLibraryCodeForTypes": true,
+  
+  // Helps Pylance resolve your local package (mapcreator)
+  "python.analysis.extraPaths": [
+    "${workspaceFolder}"
+  ],
+  
+    // -----------------------------
     "python-envs.defaultEnvManager": "ms-python.python:conda",
     "python-envs.defaultPackageManager": "ms-python.python:conda",
     "python-envs.pythonProjects": []

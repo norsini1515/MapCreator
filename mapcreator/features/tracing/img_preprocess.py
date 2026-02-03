@@ -8,10 +8,16 @@ from mapcreator.globals.logutil import info, process_step, error, setting_config
 from mapcreator.globals.image_utility import write_image, to_u8_for_display, u8_to_bool, bool_to_u8, is_binary_image
 from mapcreator import directories as _dirs
 
-# -------------------------
-# Experimental: outline -> centerline export (testing helper)
-# -------------------------
-def _show_step(title: str, img: np.ndarray, verbose: bool, *, save: bool = False, max_w: int = 1280, max_h: int = 900, wait_ms: int = 0, out_dir: Path = _dirs.TEST_DATA_DIR) -> None:
+def _show_step(title: str, 
+               img: np.ndarray, 
+               verbose: bool, 
+               *, 
+               save: bool = False, 
+               max_w: int = 1280, 
+               max_h: int = 900, 
+               wait_ms: int = 0, 
+               out_dir: Path = _dirs.TEST_DATA_DIR
+               ) -> None:
     """Show an image scaled to fit on screen using a resizable window and optionally save the step.
     Set wait_ms=0 to wait for a key; >0 waits that many milliseconds.
     If save=True, writes a PNG of the original-sized (non-resized) image to data/processed/test_data.
@@ -385,7 +391,7 @@ def fill_outline_mask(
 
 def process_image(
         src_path: Path,
-        out_path: Path,
+        out_path: Path|None=None,
         *,
         # Outline parameters (previously hardcoded defaults)
         contrast: float = 1.0,
@@ -406,6 +412,10 @@ def process_image(
         # Fill parameters
         fill_dilate_ksize: int = 1,
         fill_dilate_iter: int = 2,
+        # -------------------------
+        #output parameters
+        output_file: bool = True,
+
 ):
     """Process a drawn map image into a centerline outline and filled land.
 
@@ -425,14 +435,20 @@ def process_image(
     # skip centerline tracing and treat it as the filled land mask.
     try:
         _gray_probe = cv2.imread(str(src_path), cv2.IMREAD_GRAYSCALE)
-    except Exception:
-        _gray_probe = None
-    print(f"Probe image shape: {_gray_probe.shape if _gray_probe is not None else 'None'}")
+    except Exception as e:
+        error(f"Failed to read source image {src_path}: {e}")
+        raise ImportError(f"Failed to read source image {src_path}: {e}")
+
+    info(f"Probe image shape: {_gray_probe.shape if _gray_probe is not None else 'None'}")
+
     if _gray_probe is not None and is_binary_image(_gray_probe):
-        setting_config("Detected binary source image (0/255); skipping outline pipeline")
+        setting_config("Detected binary source image (0/255); skipping extraction pipeline")
         land_mask = (_gray_probe > 127)
-        filled_out = out_path.with_name(out_path.stem + "_filled.png")
-        filled_path = write_image(filled_out, bool_to_u8(land_mask), message="Saved binary land mask as-is")
+        if output_file and out_path is not None:
+            filled_out = out_path.with_name(out_path.stem + "_filled.png")
+            filled_path = write_image(filled_out, bool_to_u8(land_mask), message="Saved binary land mask as-is")
+        else:
+            filled_path = None
         return land_mask, filled_path
 
     try:
@@ -454,7 +470,8 @@ def process_image(
             threshold_offset=threshold_offset,
             verbose=verbose, # show intermediate steps
         )
-        write_image(out_path, outline_u8, message="Wrote centerline outline")
+        if output_file and out_path is not None:
+            write_image(out_path, outline_u8, message="Wrote centerline outline")
         
     except Exception as e:
         error(f"Centerline export failed: {e}")
@@ -468,12 +485,16 @@ def process_image(
             fill_dilate_iter=fill_dilate_iter,
             verbose=verbose,
         )
-        filled_out = out_path.with_name(out_path.stem + "_filled.png")
-        filled_path = write_image(filled_out, bool_to_u8(land_mask), message="Wrote filled land mask")
+        if output_file and out_path is not None:
+            filled_out = out_path.with_name(out_path.stem + "_filled.png")
+            filled_path = write_image(filled_out, bool_to_u8(land_mask), message="Wrote filled land mask")
+        else:
+            filled_path = None
     except Exception as e:
         error(f"Fill from outline failed: {e}")
         raise
-
+    
+    success(f"Image processing complete.")
     return land_mask, filled_path
 
 if __name__ == "__main__":

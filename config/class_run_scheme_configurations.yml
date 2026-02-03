@@ -1,0 +1,16 @@
+#class_run_scheme_configurations.yml
+# Defines the run schemes for different map types
+
+run_scheme:
+  base:
+    odd: 0 # waterbody
+    even: 1 # land
+    none: -1 # no classification
+  terrain:
+    odd: 0 # waterbody
+    even: 1 # land
+    none: -1 # no classification
+  climate:
+    odd: 0 # waterbody
+    even: 1 # land
+    none: -1 # no classification

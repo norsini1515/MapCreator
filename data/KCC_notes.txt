@@ -1,0 +1,38 @@
+Koppen Class Classification
+	- Temperature variation
+	- Precipiation variation
+
+1st letter-	Major Climate Group
+6 major groups- A B C D E H
+A (tropical humid, low lattitude, warm + wet)
+B (warm+dry climates, high pressures, 
+C (mild mid-latitude climates, mild winter, warm/hot summers)
+D (server mid-latitudes, severe/cold winters)
+E (polar, very high latitude, cold climates)
+H (high land, really tall, climate controlled by elevation)
+
+2nd letter- Precipiation
+A C D can have f m w s
+	f- wet all year
+	m- monsoonal summers (very wet summer season)
+	w- winter dry (dry winter season)
+	s- summer is dry season
+
+B can have W S
+	W- deserts, extremely dry climates
+	S- steppes, semi arid climates
+
+E can have
+	T- tundra (>=1 month above freezing)
+	F- ice caps (all months has averages below freezing)
+	
+3rd letter- extra info about temperature
+C D can have a b c d
+	a- hot summers
+	b- warm summers
+	c- cool summers
+	d- very cold winters
+
+B can have h k
+	h- hot desert or steppe
+	k- cold desert or steppe

@@ -2,6 +2,7 @@ import pathlib as pl
 from mapcreator.globals import configs
 
 ROOT_DRIVE = 'C:/Users/nicho/Documents/World Building'
+# ROOT_DRIVE = 'P:/GitLab/orsin005/miscellaneous'
 
 BASE_DIR = pl.Path(f"{ROOT_DRIVE}/MapCreator")
 

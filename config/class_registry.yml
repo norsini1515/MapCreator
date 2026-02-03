@@ -1,0 +1,20 @@
+# class_registry.yml
+# defines the classes for different map types
+
+classes:
+  base:
+    defines:
+      0: {name: Waterbody, color: "#8BBBEB"}
+      1: {name: Land,     color: "#DDFFBE"}
+      -1: {name: Default,  color: "#f5f2f2"}
+  
+  terrain:
+    defines:
+      0: {name: Waterbody, color: "#8BBBEB"}
+      1: {name: Land,     color: "#DDFFBE"}
+      -1: {name: Default,  color: "#f5f2f2"}
+  climate:
+    defines:
+      0: {name: Waterbody, color: "#8BBBEB"}
+      1: {name: Land, color: "#DDFFBE"}
+      -1: {name: Default,  color: "#f5f2f2"}

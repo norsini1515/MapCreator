@@ -11,8 +11,13 @@ WORLD_NAME = 'Atriath'
 MIN_AREA = 2
 MIN_POINTS = 3
 
-LAND_DEFS = {"class": "land", "depth": None}
-WATERBODY_DEFS = {"class": "waterbody", "depth": None}
+#depth filled at polygon generation time, here for placeholding
+#layer = ??
+LAND_DEFS = {"class": "land"}
+WATER_DEFS = {"class": "waterbody"}
+
+LAND_EXPORT_DEFS = {"file_name": "land.geojson"}
+WATER_EXPORT_DEFS = {"file_name": "water.geojson"}
 
 #----------------------
 
@@ -21,11 +26,13 @@ WATERBODY_DEFS = {"class": "waterbody", "depth": None}
 #---------------------
 # CONFIGURATION FILES
 #---------------------
-IMAGE_TRACING_EXTRACT_CONFIGS_NAME = 'extract_base_world_configs.yml'
+IMAGE_TRACING_EXTRACT_CONFIGS_FILENAME = 'extract_base_world_configs.yml'
+CLASS_REGISTRY_FILENAME = 'class_registry.yml'
+CLASS_RUN_SCHEME_CONFIGURATIONS_FILENAME = 'class_run_scheme_configurations.yml'
 
 #--------------------
 # Map Export Names
 #--------------------
-LAND_TRACING_EXTRACT_NAME = "land.shp"
-WATER_TRACING_EXTRACT_NAME = "waterbodies.shp"
+# LAND_TRACING_EXTRACT_NAME = "land.shp"
+# WATER_TRACING_EXTRACT_NAME = "waterbodies.shp"
 MERGED_TRACING_EXTRACT_NAME = "merged_base_geography.shp"

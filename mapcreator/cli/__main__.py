@@ -1,3 +1,20 @@
+"""
+CLI entry point for MapCreator feature extraction pipelines.
+
+commands:
+- extract-all: runs the full pipeline (image preprocessing, vector extraction, raster generation)
+- extract-image: runs only the image preprocessing step, outputs preprocessed images
+- extract-vector: runs only the vector extraction step, outputs GeoJSONs
+- extract-raster: runs only the raster generation step, outputs class rasters
+To rector:
+- recolor: utility to reapply palette from YAML to an existing class raster
+- paint: utility to burn polygons into an existing class raster as a specific class label/ID
+
+Usage examples:
+- Full pipeline with config file:
+    mapc extract-all --config path/to/config.yml
+
+"""
 # mapcreator/cli/__main__.py
 from pathlib import Path
 from typing import Optional, Dict, Any
@@ -7,32 +24,22 @@ from datetime import datetime
 # --- Typer app (root has no options) ---
 app = typer.Typer(no_args_is_help=True)
 
-def _load_yaml(path: Optional[Path]) -> Dict[str, Any]:
-    if not path:
-        return {}
-    try:
-        with open(path, "r") as f:
-            cfg = yaml.safe_load(f) or {}
-        info(f"Using config: {path}")
-        return cfg
-    except FileNotFoundError:
-        error(f"(config not found at {path}; using flags/defaults)")
-        return {}
-
-def _pick(cfg: Dict[str, Any], key: str, cli_val):
-    config_val = cfg.get(key)
-    if key=='verbose':
-        print(f"pick {key}: cli_val={cli_val}, cfg.get={config_val}")
-    return config_val if config_val is not None else cli_val
+# def _pick(cfg: Dict[str, Any], key: str, cli_val):
+#     config_val = cfg.get(key)
+#     if key=='verbose':
+#         print(f"pick {key}: cli_val={cli_val}, cfg.get={config_val}")
+#     return config_val if config_val is not None else cli_val
 
 # import AFTER helpers so the module loads cleanly
-from mapcreator.features.tracing.pipeline import write_all as _write_all
+from mapcreator.features.tracing import pipeline as tracing_pipeline
 from mapcreator.globals.logutil import Logger, info, warn, error, success, process_step, setting_config
-from mapcreator.globals import directories, configs
+from mapcreator.globals import directories, configs, export_gdfs
+from mapcreator.globals.config_models import ExtractConfig, read_config_file
 from mapcreator.features.tracing.reclass import burn_polygons_into_class_raster, apply_palette_from_yaml
 
+
 # DEFAULT_CONFIG_FILE_PATH
-DEFAULT_CONFIG_FILE_PATH = directories.CONFIG_DIR / configs.IMAGE_TRACING_EXTRACT_CONFIGS_NAME
+DEFAULT_CONFIG_FILE_PATH = directories.CONFIG_DIR / configs.IMAGE_TRACING_EXTRACT_CONFIGS_FILENAME
 # LOG_FILE_NAME
 LOG_FILE_NAME =  f"{configs.WORLD_NAME.replace(' ', '_')}_extract.log"
 
@@ -45,55 +52,6 @@ def _resolve_log_path() -> Path:
     base = directories.LOGS_DIR
     base.mkdir(parents=True, exist_ok=True)
     return base / f"{LOG_FILE_NAME}{datetime.now():%Y%m%d_%H%M%S}.log"
-
-# --- Helper: unified config loading ---
-def load_config(cfg: Dict[str, Any], **cli_values) -> Dict[str, Any]:
-    """Build the unified configuration metadata dict.
-
-    This mirrors the logic previously embedded in ``extract_all`` so other
-    commands can reuse it. Precedence currently matches existing behavior:
-    if a key exists in the YAML it overrides the CLI value; otherwise the
-    CLI value (or fallback default) is used.
-
-    Parameters
-    ----------
-    cfg : Dict[str, Any]
-        Parsed YAML configuration (may be empty).
-    **cli_values : Any
-        Keyword arguments representing CLI-provided values. Expected keys:
-        verbose, image, out_dir, width, height, xmin, ymin, xmax, ymax, crs,
-        invert, flood_fill, contrast, min_area, min_points, log_file.
-
-    Returns
-    -------
-    Dict[str, Any]
-        Normalized configuration dictionary used by processing pipelines.
-    """
-    def pick(key: str, cli_val):
-        config_val = cfg.get(key)
-        return config_val if config_val is not None else cli_val
-
-    meta = {
-        "log_file": pick("log_file", cli_values.get("log_file")),
-        "verbose": pick("verbose", cli_values.get("verbose")) or False,
-        "image": pick("image", cli_values.get("image")) or None,
-        "out_dir": pick("out_dir", cli_values.get("out_dir")) or None,
-        # "width": pick("width", cli_values.get("width")) or 1000,
-        # "height": pick("height", cli_values.get("height")) or 1000,
-        "extent": dict(
-            xmin=pick("xmin", cli_values.get("xmin")) or 0.0,
-            ymin=pick("ymin", cli_values.get("ymin")) or 0.0,
-            xmax=pick("xmax", cli_values.get("xmax")) or 3500.0,
-            ymax=pick("ymax", cli_values.get("ymax")) or 3500.0,
-        ),
-        "crs": pick("crs", cli_values.get("crs")) or "EPSG:3857",
-        # "invert": pick("invert", cli_values.get("invert")) or False,
-        # "flood_fill": pick("flood_fill", cli_values.get("flood_fill")) or False,
-        # "contrast": pick("contrast", cli_values.get("contrast")) or 2.0,
-        "min_area": pick("min_area", cli_values.get("min_area")) or 5.0,
-        "min_points": pick("min_points", cli_values.get("min_points")) or 3,
-    }
-    return meta
 
 # --- SUBCOMMAND ---
 @app.command("extract-all")
@@ -109,6 +67,16 @@ def extract_all(
         help="Input raster (jpg/png). If omitted, read from YAML.",
         rich_help_panel="I/O"
     ),
+    class_run_scheme_configurations_path: Optional[Path] = typer.Option(
+        None, "--class-run-scheme-configurations-path", "-r",
+        help="Path to class run scheme configurations YAML. If omitted, read from YAML.",
+        rich_help_panel="I/O"
+    ),
+    class_registry_path: Optional[Path] = typer.Option(
+        None, "--class-registry-path", "-s",
+        help="Path to class registry YAML. If omitted, read from YAML.",
+        rich_help_panel="I/O"
+    ),
     out_dir: Optional[Path] = typer.Option(
         None, "--out-dir", "-o",
         help="Output directory. If omitted, read from YAML.",
@@ -120,10 +88,6 @@ def extract_all(
     xmax: Optional[float] = typer.Option(None, "--xmax", help="Extent max X", rich_help_panel="World grid"),
     ymax: Optional[float] = typer.Option(None, "--ymax", help="Extent max Y", rich_help_panel="World grid"),
     crs:  Optional[str]  = typer.Option(None, "--crs",  help="Output CRS (e.g., 'EPSG:3857')", rich_help_panel="World grid"),
-    # Image Preprocessing
-    # invert:     Optional[bool]  = typer.Option(None, "--invert",     help="Invert after binarize", rich_help_panel="Image Preprocessing"),
-    # flood_fill: Optional[bool]  = typer.Option(None, "--flood-fill", help="Flood-fill open regions", rich_help_panel="Image Preprocessing"),
-    # contrast:   Optional[float] = typer.Option(None, "--contrast",   help="Contrast factor", rich_help_panel="Image Preprocessing"),
     # Geometry filters
     min_area:   Optional[float] = typer.Option(None, "--min-area",   help="Min polygon area (pre-affine)", rich_help_panel="Geometry filters"),
     min_points: Optional[int]   = typer.Option(None, "--min-points", help="Min ring vertices", rich_help_panel="Geometry filters"),
@@ -145,36 +109,22 @@ def extract_all(
     # Set up the logging configuration
     log_path = _resolve_log_path()
     logger = Logger(logfile_path=log_path)
-    # load configurations
-    cfg = _load_yaml(config)
-    meta = load_config(
-        cfg,
-        log_file=log_path,
-        verbose=verbose,
-        image=image,
-        out_dir=out_dir,
-        xmin=xmin,
-        ymin=ymin,
-        xmax=xmax,
-        ymax=ymax,
-        crs=crs,
-        # invert=invert,
-        # flood_fill=flood_fill,
-        # contrast=contrast,
-        min_area=min_area,
-        min_points=min_points,
-    )
-    info("Resolved configuration:")
-    for k, v in meta.items():
-        setting_config(f"  {k}: {v}")
+
+    # Load YAML into a typed ExtractConfig, then merge with CLI flags
+    tracing_cfg = read_config_file(config, kind="extract")  # type: ignore[arg-type]
+
+    if tracing_cfg.verbose:
+        info("Resolved configuration:")
+        for k, v in tracing_cfg.__dict__.items():
+            setting_config(f"  {k}: {v}")
 
     # Resolve image and out dir from meta (already merged)
-    img = Path(meta["image"]) if meta["image"] else None
-    out = Path(meta["out_dir"]) if meta["out_dir"] else None
+    img = Path(tracing_cfg.image) if tracing_cfg.image else None
+    out = Path(tracing_cfg.out_dir) if tracing_cfg.out_dir else None
 
     if dry_run:
         info("Resolved configuration:")
-        for k, v in meta.items(): setting_config(f"  {k}: {v}")
+        for k, v in tracing_cfg.__dict__.items(): setting_config(f"  {k}: {v}")
         raise typer.Exit()
 
     if not img or not out:
@@ -182,7 +132,9 @@ def extract_all(
         raise typer.Exit(code=2)
 
     out.mkdir(parents=True, exist_ok=True)
-    results = _write_all(img, out, meta)
+
+    # Run full image -> vector -> raster pipeline
+    results = tracing_pipeline.extract_all(image=img, tracing_cfg=tracing_cfg, out_dir=out)
     for k, v in results.items():
         info(f"{k}: {v}")
     success(f"Extraction completed successfully!, Outputs in: {out}")
@@ -202,16 +154,133 @@ def extract_image(
         rich_help_panel="I/O"
     ),
 ):
-    """turn a hand drawn map into a black and white outline image ready for further processing or easy manipulation
-    A subet of extract-all focused on image preprocessing only.
-    Outputs a binary outline image to the specified out_dir.
-    Currently this image if filled in this means all internal lakes/sea will be white, and ocean black.
-    Todo: add options to control flood fill and inversion.
-    Currently all parameters are default as the work well with a direct image of the map drawing. 
+    """Preprocess a hand-drawn map into outline + filled land mask.
+
+    This is a subset of ``extract-all`` focused on image preprocessing only.
+    It writes a centerline outline PNG and a filled land-mask PNG.
     """
-      
+
+    # Load configuration from YAML into ExtractConfig, then normalize
+    tracing_cfg = read_config_file(config, kind="extract")  # type: ignore[arg-type]
+   
+
+    img = Path(tracing_cfg.image) if tracing_cfg.image else None
+    out = Path(tracing_cfg.out_dir) if tracing_cfg.out_dir else None
+
+    if not img or not out:
+        error("image and out_dir are required (via YAML for extract-image).")
+        raise typer.Exit(code=2)
+
+    out.mkdir(parents=True, exist_ok=True)
+
+    # Preprocess image and write diagnostic PNGs; return value is the land mask
+    land_mask = tracing_pipeline.extract_image(image=img, tracing_cfg=tracing_cfg, out_dir=out)
+    info(f"Extracted land mask with shape {land_mask.shape} into {out}")
+
+    success("Image extraction completed successfully!")
+
+
+@app.command("extract-vector")
+def extract_vector(
+    # I/O
+    config: Optional[Path] = typer.Option(DEFAULT_CONFIG_FILE_PATH, "--config", "-c",
+        help="YAML file with parameters. Flags override YAML.",
+        rich_help_panel="I/O",
+    ),
+    build_labels: bool = typer.Option(False, "--build-labels", 
+        help="Build vector labels from class registry.", 
+        rich_help_panel="Utility"
+    ),
+):
+    """Extract only vector products (land, waterbody, merged polygons)."""
+
+    log_path = _resolve_log_path()
+    logger = Logger(logfile_path=log_path)
+
+    tracing_cfg = read_config_file(config, kind="extract")  # type: ignore[arg-type]
+   
+    info("Resolved configuration (extract-vector):")
+    for k, v in tracing_cfg.__dict__.items():
+        setting_config(f"  {k}: {v}")
+
+    if not tracing_cfg.image or not tracing_cfg.out_dir:
+        error("image and out_dir are required (via YAML or flags).")
+        logger.teardown()
+        raise typer.Exit(code=2)
+
+    tracing_cfg.out_dir.mkdir(parents=True, exist_ok=True)
+
+    # Run vector extraction; files are written when verbose/out_dir are set
+    even_gdf, odd_gdf = tracing_pipeline.extract_vectors(img=tracing_cfg.image, 
+                                                         tracing_cfg=tracing_cfg, 
+                                                         out_dir=tracing_cfg.out_dir)
+
+    results = {
+        "even_geojson": tracing_cfg.out_dir / "even.geojson",
+        "odd_geojson": tracing_cfg.out_dir / "odd.geojson",
+    }
     
-    success("Image extract command executed successfully!")
+    if build_labels:
+        if tracing_cfg.verbose:
+            process_step("Building vector labels from class registry...")
+        
+        merged_vector_gdfs = tracing_pipeline.label_and_merge_by_section(
+                                tracing_cfg=tracing_cfg,
+                                even_base_gdf=even_gdf, 
+                                odd_base_gdf=odd_gdf
+                            )
+        export_gdfs(merged_vector_gdfs, tracing_cfg.out_dir / "labeled_vectors", verbose=tracing_cfg.verbose)
+        
+        results.update({
+            f"{section}_geojson": tracing_cfg.out_dir / "labeled_vectors" / f"{section}.geojson"
+            for section in merged_vector_gdfs.keys()
+        })
+
+    if tracing_cfg.verbose:
+        for k, v in results.items():
+            info(f"{k}: {v}")
+
+    success(f"Vector extraction completed successfully!, Outputs in: {tracing_cfg.out_dir}")
+    logger.teardown()
+
+
+@app.command("extract-raster")
+def extract_raster(
+    # I/O
+    config: Optional[Path] = typer.Option(
+        DEFAULT_CONFIG_FILE_PATH, "--config", "-c",
+        help="YAML file with parameters. Flags override YAML.",
+        rich_help_panel="I/O",
+    ),
+):
+    """Extract only class rasters (world/terrain/climate) from the image."""
+
+    log_path = _resolve_log_path()
+    logger = Logger(logfile_path=log_path)
+
+    tracing_cfg = read_config_file(config, kind="extract")  # type: ignore[arg-type]
+    
+    if tracing_cfg.verbose:
+        setting_config("Resolved configuration (extract-raster):")
+        for k, v in tracing_cfg.__dict__.items():
+            setting_config(f"  {k}: {v}")
+
+    if not tracing_cfg.image or not tracing_cfg.out_dir:
+        error("image and out_dir are required (via YAML or flags).")
+        logger.teardown()
+        raise typer.Exit(code=2)
+
+    tracing_cfg.out_dir.mkdir(parents=True, exist_ok=True)
+
+    # Build class rasters from image path using the tracing pipeline
+    results = tracing_pipeline.extract_rasters(source=tracing_cfg.image, 
+                                               tracing_cfg=tracing_cfg, 
+                                               out_dir=tracing_cfg.out_dir)
+    for k, v in results.items():
+        info(f"{k}: {v}")
+
+    success(f"Raster extraction completed successfully!, Outputs in: {tracing_cfg.out_dir}")
+    logger.teardown()
 
 
 @app.command("recolor")
@@ -224,7 +293,18 @@ def recolor(
     Example call:
         mapcreator recolor path/to/terrain_class_map.tif --section terrain --config path/to/raster_classifications.yml
     """
-    cfg = _load_yaml(config)
+    # For recolor we still want a raw YAML dict, not ExtractConfig
+    cfg: Dict[str, Any]
+    if not config:
+        cfg = {}
+    else:
+        try:
+            info(f"Loading config from {config}...")
+            with config.open("r", encoding="utf-8") as f:
+                cfg = yaml.safe_load(f) or {}
+        except FileNotFoundError:
+            error(f"(config not found at {config}; using defaults where possible)")
+            cfg = {}
     apply_palette_from_yaml(raster, cfg, section)
 
 @app.command("paint")
@@ -238,7 +318,14 @@ def paint(
     overwrite: bool = typer.Option(False, "--overwrite", help="Edit raster in place."),
 ):
     """Burn polygons into an existing class raster as a specific class label/ID."""
-    cfg = _load_yaml(config)
+    # For paint we still want a raw YAML dict, not ExtractConfig
+    try:
+        info(f"Loading config from {config}...")
+        with config.open("r", encoding="utf-8") as f:
+            cfg: Dict[str, Any] = yaml.safe_load(f) or {}
+    except FileNotFoundError:
+        error(f"(config not found at {config}; using defaults where possible)")
+        cfg = {}
     burn_polygons_into_class_raster(
         raster_path=raster,
         polygons_path=polygons,
