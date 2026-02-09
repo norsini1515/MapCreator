@@ -1,3 +1,123 @@
+"""Image preprocessing and centerline tracing utilities.
+
+Overview
+--------
+This module converts hand‑drawn or scanned raster maps into:
+
+- a clean 1‑pixel centerline outline (`outline_u8`: 0/255), and
+- a filled land mask (`land_mask`: boolean),
+
+using a configurable image-processing pipeline. The pipeline is designed for
+noisy pencil/pen sketches and supports both automatic (Otsu) and manual
+thresholding, optional polarity inversion, topology cleanup, skeletonization,
+and robust land/ocean filling via flood‑fill from image borders.
+
+Design and assumptions
+----------------------
+- Input is grayscale or color raster that can be converted to grayscale.
+- Foreground “strokes” represent coastline outlines; interior spaces are land.
+- Polarity may need inversion (e.g., pencil lines dark on light paper).
+- Filled land is derived from the final barrier (outline) by flood‑fill.
+- Boolean semantics: True/255 = foreground; False/0 = background.
+
+Detailed pipeline
+-----------------
+1. Read grayscale; optionally apply Gaussian blur (odd kernel ≥3).
+2. Adjust contrast (`alpha`) to emphasize strokes when needed.
+3. Threshold:
+     - Otsu (`threshold_mode='otsu'`) with optional `threshold_offset`.
+     - Manual (`threshold_mode='manual'`, `manual_threshold=<0..255>`).
+4. Optional invert of stroke polarity (`invert_lines=True`).
+5. Topology cleanup:
+     - Pre‑dilation to seal hairline gaps (`pre_dilate_ksize`, `pre_dilate_iter`).
+     - Morphological closing (`close_ksize`).
+     - Small object removal (`min_stroke_pixels`).
+6. Skeletonization to 1‑px centerline:
+     - Prefer `skimage.morphology.skeletonize`.
+     - Fallback: `cv2.ximgproc.thinning` (opencv‑contrib).
+7. Optional connectivity improvement:
+     - Bridge nearby endpoints within radius (`bridge_endpoints_radius`),
+         using SciPy `cKDTree` or a naive O(N²) fallback.
+     - Prune short spurs (`prune_spurs`, `spur_iterations`).
+8. Filling:
+     - Dilate outline to seal micro‑gaps (`fill_dilate_ksize`, `fill_dilate_iter`).
+     - Flood‑fill ocean from borders on free space; land = free − ocean.
+
+Key functions
+-------------
+- `trace_centerline_from_file(img_path, ...)`:
+    Extracts the 1‑px centerline from a drawn raster and returns
+    `(outline_u8, skeleton_bool)`.
+- `fill_outline_mask(skel, ...)`:
+    Produces a boolean land mask from a 1‑px outline skeleton.
+- `process_image(src_path, out_path=None, ...)`:
+    High‑level entry:
+    - detects already‑binary inputs and short‑circuits to land mask,
+    - runs the extraction + fill pipeline,
+    - optionally writes outline and filled PNGs.
+
+Parameters and tuning tips
+--------------------------
+- `contrast`: >1 boosts stroke visibility; 1 leaves unchanged.
+- `threshold_mode` / `manual_threshold` / `threshold_offset`:
+    control binarization; use offset when Otsu is slightly off.
+- `invert_lines`: set True for dark strokes on light backgrounds.
+- `gaussian_blur_ksize`: light denoising (odd ≥3) for pencil noise.
+- `pre_dilate_ksize`, `pre_dilate_iter`: seal micro‑gaps before closing.
+- `close_ksize`: close small breaks; too large can over‑merge features.
+- `min_stroke_pixels`: drop specks; tune to remove scanning dust.
+- `bridge_endpoints_radius`, `bridge_max_links`: connect close gaps in skeleton.
+- `prune_spurs`, `spur_iterations`: remove tiny dangling branches/tears.
+- `fill_dilate_ksize`, `fill_dilate_iter`: improve barrier tightness before fill.
+
+Outputs
+-------
+- Outline: uint8 image (0 background, 255 foreground).
+- Skeleton: boolean mask (True foreground).
+- Filled land: boolean mask (True land).
+- When `out_path` is provided:
+    - outline is written to `out_path`,
+    - filled land is written to `out_path.stem + '_filled.png'`.
+
+Optional dependencies and fallbacks
+-----------------------------------
+- scikit‑image: morphology operations + skeletonization.
+- OpenCV contrib (`cv2.ximgproc`): thinning fallback for skeletonization.
+- SciPy: `cKDTree` for efficient endpoint bridging.
+All features gracefully fall back to core OpenCV implementations when missing.
+
+Debugging and reproducibility
+-----------------------------
+- `verbose=True` shows intermediate steps via `_show_step(...)` and can save
+    original‑scale frames to a test data directory.
+- For headless environments, disable window display or set `verbose=False`.
+- The fast path (`is_binary_image`) bypasses the pipeline for already binary
+    inputs (white land, black ocean), preserving original data.
+
+Failure modes and remedies
+--------------------------
+- Ocean leaks into land: increase `fill_dilate_ksize`/`iter`, or closing size.
+- Gaps in outline: increase pre‑dilation/closing; consider bridging endpoints.
+- Over‑merged features: reduce closing/dilation sizes; lower contrast.
+- Excess speck noise: raise `min_stroke_pixels`; apply Gaussian blur.
+
+Example
+-------
+        from pathlib import Path
+        from mapcreator.features.tracing.img_preprocess import process_image
+
+        land_mask, filled_path = process_image(
+                src_path=Path(".../my_scan.jpg"),
+                out_path=Path(".../outline.png"),
+                invert_lines=True,
+                threshold_mode="otsu",
+                verbose=False,
+        )
+
+Tune parameters (thresholding, dilation/closing, spur pruning, bridging) to
+match the characteristics of the input drawing and desired fidelity.
+"""
+
 import re
 import cv2
 import numpy as np
