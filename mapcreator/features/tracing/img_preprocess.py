@@ -128,7 +128,7 @@ from mapcreator.globals.logutil import info, process_step, error, setting_config
 from mapcreator.globals.image_utility import write_image, to_u8_for_display, u8_to_bool, bool_to_u8, is_binary_image
 from mapcreator import directories as _dirs
 
-def _show_step(title: str, 
+def show_step(title: str, 
                img: np.ndarray, 
                verbose: bool, 
                *, 
@@ -166,7 +166,7 @@ def _show_step(title: str,
     cv2.imshow(title, disp)
     cv2.waitKey(wait_ms)
 
-def _remove_small_objects_bool(mask: np.ndarray, min_size: int) -> np.ndarray:
+def remove_small_objects_bool(mask: np.ndarray, min_size: int) -> np.ndarray:
     """Remove connected components smaller than min_size from a boolean mask.
     Uses skimage if available; falls back to cv2 connected components.
     """
@@ -185,7 +185,7 @@ def _remove_small_objects_bool(mask: np.ndarray, min_size: int) -> np.ndarray:
                 keep[labels == i] = 255
         return keep > 0
 
-def _closing_bool(mask: np.ndarray, ksize: int) -> np.ndarray:
+def closing_bool(mask: np.ndarray, ksize: int) -> np.ndarray:
     try:
         import importlib
         morph = importlib.import_module("skimage.morphology")
@@ -193,18 +193,15 @@ def _closing_bool(mask: np.ndarray, ksize: int) -> np.ndarray:
         # print(help(morph.footprint_rectangle))
         try:
             fp = morph.footprint_rectangle((ksize, ksize))  # skimage >= 0.23
-        except Exception:
-            try:
-                fp = morph.footprint_rectangle((ksize, ksize))       # common API
-            except Exception as e:
-                fp = morph.square(int(ksize))                      # fallback
-                error(f"Using square footprint for closing due to error: {e}")
+        except Exception as e:
+            fp = morph.square(int(ksize))                      # fallback
+            error(f"Using square footprint for closing due to error: {e}")
         return morph.closing(mask, fp)
     except Exception:
         k = cv2.getStructuringElement(cv2.MORPH_RECT, (int(ksize), int(ksize)))
         return cv2.morphologyEx(bool_to_u8(mask), cv2.MORPH_CLOSE, k) > 0
 
-def _skeletonize_bool(mask: np.ndarray) -> np.ndarray:
+def skeletonize_bool(mask: np.ndarray) -> np.ndarray:
     """Skeletonize a boolean mask to 1px lines.
     Prefers skimage.morphology.skeletonize, falls back to cv2.ximgproc.thinning if available.
     """
@@ -223,7 +220,7 @@ def _skeletonize_bool(mask: np.ndarray) -> np.ndarray:
         thin = ximg.thinning((bool_to_u8(mask)))
         return thin > 0
 
-def _find_endpoints_u8(skel_u8: np.ndarray) -> np.ndarray:
+def find_endpoints_u8(skel_u8: np.ndarray) -> np.ndarray:
     """Return a uint8 mask of endpoints in a 1px skeleton (8-neighborhood).
     Endpoint has exactly 1 neighbor: 10 (self) + 1 = 11 in the weighted sum trick.
     """
@@ -231,7 +228,7 @@ def _find_endpoints_u8(skel_u8: np.ndarray) -> np.ndarray:
     nb = cv2.filter2D((skel_u8 > 0).astype(np.uint8), -1, k)
     return ((nb == 11) & (skel_u8 > 0)).astype(np.uint8)
 
-def _bridge_endpoints(skel: np.ndarray, radius: int = 4, max_links_per_node: int = 1) -> np.ndarray:
+def bridge_endpoints(skel: np.ndarray, radius: int = 4, max_links_per_node: int = 1) -> np.ndarray:
     """Greedily connect nearby skeleton endpoints with 1px lines.
     - radius: maximum pixel distance to connect
     - max_links_per_node: how many connections each endpoint may create
@@ -240,7 +237,7 @@ def _bridge_endpoints(skel: np.ndarray, radius: int = 4, max_links_per_node: int
     if radius <= 0:
         return skel
     u8 = (skel.astype(np.uint8) * 255)
-    ep_mask = _find_endpoints_u8(u8)
+    ep_mask = find_endpoints_u8(u8)
     ys, xs = np.where(ep_mask > 0)
     if len(xs) < 2:
         return skel
@@ -284,7 +281,7 @@ def _bridge_endpoints(skel: np.ndarray, radius: int = 4, max_links_per_node: int
 
     return u8 > 0
 
-def _fill_land_from_outline(
+def fill_land_from_outline(
     outline_bool: np.ndarray,
     *,
     dilate_ksize: int = 3,
@@ -306,7 +303,7 @@ def _fill_land_from_outline(
         k = cv2.getStructuringElement(cv2.MORPH_RECT, (int(dilate_ksize), int(dilate_ksize)))
         barrier = cv2.dilate(bool_to_u8(barrier), k, iterations=int(dilate_iter)) > 0
 
-    _show_step("10a - Barrier For Fill (after dilation)", barrier, verbose, save=True)
+    show_step("10a - Barrier For Fill (after dilation)", barrier, verbose, save=True)
 
     # 2) Free space is everything that's not a barrier
     free_u8 = np.where(barrier, 0, 255).astype(np.uint8)
@@ -329,12 +326,12 @@ def _fill_land_from_outline(
     for x, y in seeds:
         seed_fill(x, y)
 
-    _show_step("10b - Flooded Ocean (128)", flood, verbose, save=True)
+    show_step("10b - Flooded Ocean (128)", flood, verbose, save=True)
 
     ocean = flood == 128
     land = flood == 255
 
-    _show_step("10c - Land Mask (filled)", land, verbose, save=True)
+    show_step("10c - Land Mask (filled)", land, verbose, save=True)
     return barrier, ocean, land
 
 def trace_centerline_from_file(
@@ -398,19 +395,19 @@ def trace_centerline_from_file(
     gray = cv2.imread(str(img_path), cv2.IMREAD_GRAYSCALE)
     if gray is None:
         raise FileNotFoundError(img_path)
-    _show_step("01 - Grayscale", gray, verbose, save=True)
+    show_step("01 - Grayscale", gray, verbose, save=True)
         
     # Apply Gaussian blur if specified
     if isinstance(gaussian_blur_ksize, int) and gaussian_blur_ksize >= 3 and gaussian_blur_ksize % 2 == 1:
         gray = cv2.GaussianBlur(gray, (gaussian_blur_ksize, gaussian_blur_ksize), 0)
         setting_config(f"Gaussian blur k={gaussian_blur_ksize}")
-        _show_step("02 - After Blur", gray, verbose, save=True)
+        show_step("02 - After Blur", gray, verbose, save=True)
     
     # Adjust contrast
     if isinstance(contrast, (int, float)) and contrast != 1.0:
         gray = cv2.convertScaleAbs(gray, alpha=float(contrast), beta=0)
         setting_config(f"Contrast alpha={contrast}")
-        _show_step("03 - After Contrast", gray, verbose, save=True)
+        show_step("03 - After Contrast", gray, verbose, save=True)
     else:
         setting_config("Contrast: unchanged (1.0)")
 
@@ -429,12 +426,12 @@ def trace_centerline_from_file(
             setting_config(f"Otsu base: {t_otsu}; applied offset {threshold_offset} -> used {t_used}")
         else:
             setting_config(f"Otsu's threshold value: {t_used}")
-    _show_step("04 - Threshold (pre-invert)", binimg, verbose, save=True)
+    show_step("04 - Threshold (pre-invert)", binimg, verbose, save=True)
     
     if invert_lines:
         binimg = 255 - binimg
         setting_config("Invert lines: True (strokes become foreground)")
-        _show_step("05 - Threshold (final polarity)", binimg, verbose, save=True)
+        show_step("05 - Threshold (final polarity)", binimg, verbose, save=True)
 
     mask = u8_to_bool(binimg)
 
@@ -443,29 +440,29 @@ def trace_centerline_from_file(
         k = cv2.getStructuringElement(cv2.MORPH_RECT, (int(pre_dilate_ksize), int(pre_dilate_ksize)))
         mask = cv2.dilate(bool_to_u8(mask), k, iterations=int(pre_dilate_iter)) > 0
         setting_config(f"Pre-dilate k={pre_dilate_ksize}, iter={pre_dilate_iter}")
-        _show_step("05a - After Pre-Dilate", mask, verbose, save=True)
+        show_step("05a - After Pre-Dilate", mask, verbose, save=True)
     
     if close_ksize and close_ksize >= 3:
-        mask = _closing_bool(mask, int(close_ksize))
+        mask = closing_bool(mask, int(close_ksize))
         setting_config(f"Closing k={close_ksize}")
-        _show_step("06 - After Closing", mask, verbose, save=True)
+        show_step("06 - After Closing", mask, verbose, save=True)
 
     if min_stroke_pixels and min_stroke_pixels > 0:
         before = int(mask.sum())
-        mask = _remove_small_objects_bool(mask, int(min_stroke_pixels))
+        mask = remove_small_objects_bool(mask, int(min_stroke_pixels))
         after = int(mask.sum())
         setting_config(f"Removed small objects: {max(0, before - after)} pixels")
         
-        _show_step("07 - After Remove Small Objects", mask, verbose, save=True)
+        show_step("07 - After Remove Small Objects", mask, verbose, save=True)
 
-    skel = _skeletonize_bool(mask)
-    _show_step("08 - Skeleton", skel, verbose, save=True)
+    skel = skeletonize_bool(mask)
+    show_step("08 - Skeleton", skel, verbose, save=True)
 
     # Optional: bridge close endpoints on the skeleton to improve connectivity
     if isinstance(bridge_endpoints_radius, int) and bridge_endpoints_radius > 0:
-        skel = _bridge_endpoints(skel, radius=int(bridge_endpoints_radius), max_links_per_node=int(max(1, bridge_max_links)))
+        skel = bridge_endpoints(skel, radius=int(bridge_endpoints_radius), max_links_per_node=int(max(1, bridge_max_links)))
         setting_config(f"Bridged endpoints within r={bridge_endpoints_radius}, max_links={bridge_max_links}")
-        _show_step("08a - After Bridge Endpoints", skel, verbose, save=True)
+        show_step("08a - After Bridge Endpoints", skel, verbose, save=True)
     # import sys
     # sys.exit(f"Debug exit after skeletonization")
     if prune_spurs:
@@ -480,11 +477,11 @@ def trace_centerline_from_file(
             u8[endpoints] = 0
         skel = u8 > 0
         setting_config("Pruned short spurs")
-        _show_step("09 - After Spur Prune", skel, verbose, save=True)
+        show_step("09 - After Spur Prune", skel, verbose, save=True)
 
     out = bool_to_u8(skel)
     if verbose:
-        _show_step("10 - Final Outline (computed)", out, verbose, save=True)
+        show_step("10 - Final Outline (computed)", out, verbose, save=True)
 
     if verbose:
         cv2.destroyAllWindows()
@@ -499,14 +496,14 @@ def fill_outline_mask(
     verbose: bool = False,
 ) -> np.ndarray:
     """Fill land from a 1px skeleton outline and return the boolean mask."""
-    _, _, land_mask = _fill_land_from_outline(
+    _, _, land_mask = fill_land_from_outline(
         skel,
         dilate_ksize=int(fill_dilate_ksize),
         dilate_iter=int(fill_dilate_iter),
         verbose=verbose,
     )
     if verbose:
-        _show_step("10d - Final Land (computed)", land_mask, verbose, save=True)
+        show_step("10d - Final Land (computed)", land_mask, verbose, save=True)
     return land_mask
 
 def process_image(
@@ -518,7 +515,7 @@ def process_image(
         invert_lines: bool = True,
         gaussian_blur_ksize: int = 0,
         close_ksize: int = 0,
-        pre_dilate_ksize: int = 1,
+        pre_dilate_ksize: int = 2,
         pre_dilate_iter: int = 2,
         bridge_endpoints_radius: int = 8,
         bridge_max_links: int = 1,
@@ -536,7 +533,7 @@ def process_image(
         #output parameters
         output_file: bool = True,
 
-):
+) -> tuple[np.ndarray, Path|None]: #a land mask and path to filled image
     """Process a drawn map image into a centerline outline and filled land.
 
     Parameters mirror those of `trace_centerline_from_file` and `fill_outline_mask` so
@@ -555,6 +552,8 @@ def process_image(
     # skip centerline tracing and treat it as the filled land mask.
     try:
         _gray_probe = cv2.imread(str(src_path), cv2.IMREAD_GRAYSCALE)
+        if verbose:
+            show_step("Probe Source Image", _gray_probe, verbose, save=False)
     except Exception as e:
         error(f"Failed to read source image {src_path}: {e}")
         raise ImportError(f"Failed to read source image {src_path}: {e}")
@@ -563,7 +562,8 @@ def process_image(
 
     if _gray_probe is not None and is_binary_image(_gray_probe):
         setting_config("Detected binary source image (0/255); skipping extraction pipeline")
-        land_mask = (_gray_probe > 127)
+        #write file as-is anyway for next steps
+        land_mask = (_gray_probe > 127) # 127 irrelevant threshold for binary image
         if output_file and out_path is not None:
             filled_out = out_path.with_name(out_path.stem + "_filled.png")
             filled_path = write_image(filled_out, bool_to_u8(land_mask), message="Saved binary land mask as-is")
@@ -622,21 +622,47 @@ if __name__ == "__main__":
     import datetime
     timstamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     timstamp = ""
-    src = _dirs.RAW_DATA_DIR / "baselandmass_10282025.jpg"
+    # src = _dirs.RAW_DATA_DIR / "baseland_12182025_1.jpg"
+    src = _dirs.RAW_DATA_DIR / "mountain_layer_02082026.png"
+    # src =_dirs.PROCESSED_DATA_DIR / 'base_class_map.tif'
     # src = _dirs.RAW_DATA_DIR / "baseland_12182025_1.jpg"
     outline_png = _dirs.TEST_DATA_DIR / f"test_centerline_outline_{timstamp}.png"
     # filled_png = _dirs.TEST_DATA_DIR / "test_centerline_outline_filled.png"
 
     info(f"Testing process_image with: {src}")
 
-    land_mask, filled_path = process_image(src_path=src, out_path=outline_png, verbose=False)
+    # _gray_probe = cv2.imread(src, cv2.IMREAD_GRAYSCALE)
+    # cv2.imshow("gray probe", _gray_probe)
+    color_probe = cv2.imread(src, cv2.IMREAD_COLOR)
+    if color_probe is None:
+        raise RuntimeError(f"cv2.imread returned None for: {src}")
     
-    try:
-        os.startfile(str(filled_path))
-    except Exception as e:
-        error(f"Failed to open filled image: {e}")
+    info(f"shape: {color_probe.shape}")
+    info(f"dtype: {color_probe.dtype}")
+    info(f"min/max: {color_probe.min()}/{color_probe.max()}")
+    cv2.imshow("color probe", color_probe)
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
+
+    pixels = color_probe.reshape(-1, 3)
+    unique, counts = np.unique(pixels, axis=0, return_counts=True)
+
+    palette = {
+        f"#{r:02X}{g:02X}{b:02X}": int(cnt)
+        for (b, g, r), cnt in zip(unique, counts)
+    }
+
+    for k, v in palette.items():
+        info(f"{k}: {v}")
 
 
+    # land_mask, filled_path = process_image(src_path=src, out_path=outline_png, verbose=True)    
+    # try:
+    #     os.startfile(str(filled_path))
+    # except Exception as e:
+    #     error(f"Failed to open filled image: {e}")
+
+    
 
 
     
