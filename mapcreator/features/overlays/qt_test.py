@@ -14,15 +14,15 @@ from PySide6.QtWidgets import (
 )
 
 from mapcreator import directories as _dirs
-from map_view import MapView
+from mapcreator.features.overlays.layer_view import LayerView
 
 # sys.exit()  # temporary to prevent accidental execution while developing
 
 class Loader(QUiLoader):
     def createWidget(self, className, parent=None, name=""):
         # MUST match the "Promoted class name" in Designer exactly
-        if className == "MapView":
-            w = MapView(parent)
+        if className == "LayerView":
+            w = LayerView(parent)
             w.setObjectName(name)
             return w
         return super().createWidget(className, parent, name)
@@ -56,7 +56,7 @@ def new_raster_layer(window, scene: QGraphicsScene, layers_list) -> None:
     path_str, _ = QFileDialog.getOpenFileName(
         window,
         "Open Raster",
-        "",
+        _dirs.RASTER_DATA_DIR.as_posix(),
         "Images (*.png *.jpg *.jpeg *.bmp *.tif *.tiff);;All Files (*)",
     )
     if not path_str:
@@ -83,7 +83,7 @@ def new_raster_layer(window, scene: QGraphicsScene, layers_list) -> None:
 
     # Fit to view if first layer; otherwise leave zoom as-is
     if scene.items().__len__() == 1:
-        view = window.findChild(QGraphicsView, "mapView")
+        view = window.findChild(QGraphicsView, "LayerView")
         if view is not None:
             view.fitInView(item.boundingRect(), Qt.AspectRatioMode.KeepAspectRatio)
 
@@ -101,21 +101,22 @@ if __name__ == "__main__":
 
     # --- find widgets by objectName (must match Designer) ---
     # map_view = window.findChild(QGraphicsView, "mapView")
-    map_view = window.findChild(MapView, "mapView")
+    map_view = window.findChild(LayerView, "LayerView")
+    print(f"map_view: {type(map_view)}")
     layers_list = window.findChild(type(window.layersList), "layersList") if hasattr(window, "layersList") else None
     if layers_list is None:
         # safer fallback
         from PySide6.QtWidgets import QListWidget
         layers_list = window.findChild(QListWidget, "layersList")
 
-    action_new_raster = window.findChild(type(window.actionNewRaster_Layer), "actionNewRaster_Layer") if hasattr(window, "actionNewRaster_Layer") else None
+    action_new_raster = window.findChild(type(window.actionNewTerrain_Layer), "actionNewTerrain_Layer") if hasattr(window, "actionNewTerrain_Layer") else None
     if action_new_raster is None:
         from PySide6.QtGui import QAction
-        action_new_raster = window.findChild(QAction, "actionNewRaster_Layer")
+        action_new_raster = window.findChild(QAction, "actionNewTerrain_Layer")
 
     # if map_view is None or layers_list is None or action_new_raster is None:
     #     raise RuntimeError(
-    #         "Could not find one of: mapView, layersList, actionNewRaster_Layer. "
+    #         "Could not find one of: mapView, layersList, actionNewTerrain_Layer. "
     #         "Check objectName values in Qt Designer."
     #     )
 

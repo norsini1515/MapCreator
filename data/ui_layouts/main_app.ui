@@ -6,15 +6,15 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1022</width>
-    <height>750</height>
+    <width>1114</width>
+    <height>864</height>
    </rect>
   </property>
   <property name="windowTitle">
    <string>MainWindow</string>
   </property>
   <widget class="QWidget" name="centralwidget">
-   <widget class="MapView" name="mapView">
+   <widget class="LayerView" name="LayerView">
     <property name="geometry">
      <rect>
       <x>10</x>
@@ -33,13 +33,92 @@
      <number>1</number>
     </property>
    </widget>
+   <widget class="QDockWidget" name="OpenLayersList">
+    <property name="geometry">
+     <rect>
+      <x>840</x>
+      <y>220</y>
+      <width>271</width>
+      <height>581</height>
+     </rect>
+    </property>
+    <widget class="QWidget" name="PaintDocket">
+     <widget class="QListWidget" name="layersList">
+      <property name="geometry">
+       <rect>
+        <x>0</x>
+        <y>0</y>
+        <width>271</width>
+        <height>551</height>
+       </rect>
+      </property>
+      <property name="frameShape">
+       <enum>QFrame::Shape::Panel</enum>
+      </property>
+      <property name="midLineWidth">
+       <number>1</number>
+      </property>
+     </widget>
+    </widget>
+   </widget>
+   <widget class="QDockWidget" name="LayerControl">
+    <property name="geometry">
+     <rect>
+      <x>840</x>
+      <y>0</y>
+      <width>251</width>
+      <height>211</height>
+     </rect>
+    </property>
+    <widget class="QWidget" name="dockWidgetContents_2">
+     <widget class="QRadioButton" name="radioButton">
+      <property name="geometry">
+       <rect>
+        <x>10</x>
+        <y>0</y>
+        <width>131</width>
+        <height>31</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Mountain Layer</string>
+      </property>
+     </widget>
+     <widget class="QRadioButton" name="radioButton_2">
+      <property name="geometry">
+       <rect>
+        <x>10</x>
+        <y>30</y>
+        <width>131</width>
+        <height>31</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Hills</string>
+      </property>
+     </widget>
+     <widget class="QRadioButton" name="radioButton_3">
+      <property name="geometry">
+       <rect>
+        <x>10</x>
+        <y>60</y>
+        <width>131</width>
+        <height>31</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Marsh</string>
+      </property>
+     </widget>
+    </widget>
+   </widget>
   </widget>
   <widget class="QMenuBar" name="menubar">
    <property name="geometry">
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>1022</width>
+     <width>1114</width>
      <height>33</height>
     </rect>
    </property>
@@ -51,7 +130,19 @@
      <property name="title">
       <string>New Layer</string>
      </property>
-     <addaction name="actionNewRaster_Layer"/>
+     <addaction name="actionNewTerrain_Layer"/>
+     <addaction name="actionClimate_Layer"/>
+     <addaction name="actionRegion_Layer"/>
+     <addaction name="actionHydrology_Layer"/>
+     <addaction name="actionSettlement_Layer"/>
+    </widget>
+    <widget class="QMenu" name="menuOpen_Layer">
+     <property name="title">
+      <string>Open Layer</string>
+     </property>
+     <addaction name="actionTerrain_Layer"/>
+     <addaction name="actionClimate_Layer_2"/>
+     <addaction name="actionRegion_Layer_2"/>
     </widget>
     <addaction name="actionNew_Project"/>
     <addaction name="actionOpen_Project"/>
@@ -59,33 +150,24 @@
     <addaction name="separator"/>
     <addaction name="separator"/>
     <addaction name="menuNew_Layer"/>
+    <addaction name="menuOpen_Layer"/>
+   </widget>
+   <widget class="QMenu" name="menuView">
+    <property name="title">
+     <string>View</string>
+    </property>
+    <widget class="QMenu" name="menuDockables">
+     <property name="title">
+      <string>Dockables</string>
+     </property>
+     <addaction name="actionLayer_List"/>
+    </widget>
+    <addaction name="menuDockables"/>
    </widget>
    <addaction name="menuFile"/>
+   <addaction name="menuView"/>
   </widget>
   <widget class="QStatusBar" name="statusbar"/>
-  <widget class="QDockWidget" name="dockWidget">
-   <attribute name="dockWidgetArea">
-    <number>2</number>
-   </attribute>
-   <widget class="QWidget" name="PaintDocket">
-    <widget class="QListWidget" name="layersList">
-     <property name="geometry">
-      <rect>
-       <x>0</x>
-       <y>0</y>
-       <width>251</width>
-       <height>581</height>
-      </rect>
-     </property>
-     <property name="frameShape">
-      <enum>QFrame::Shape::Panel</enum>
-     </property>
-     <property name="midLineWidth">
-      <number>1</number>
-     </property>
-    </widget>
-   </widget>
-  </widget>
   <action name="actionOpen_Project">
    <property name="text">
     <string>Open Project</string>
@@ -96,9 +178,9 @@
     <string>Save Project</string>
    </property>
   </action>
-  <action name="actionNewRaster_Layer">
+  <action name="actionNewTerrain_Layer">
    <property name="text">
-    <string>Raster Layer</string>
+    <string>Terrain Layer</string>
    </property>
   </action>
   <action name="actionNew_Project">
@@ -106,12 +188,52 @@
     <string>New Project</string>
    </property>
   </action>
+  <action name="actionTerrain_Layer">
+   <property name="text">
+    <string>Terrain Layer</string>
+   </property>
+  </action>
+  <action name="actionLayer_List">
+   <property name="text">
+    <string>Layer List</string>
+   </property>
+  </action>
+  <action name="actionClimate_Layer">
+   <property name="text">
+    <string>Climate Layer</string>
+   </property>
+  </action>
+  <action name="actionRegion_Layer">
+   <property name="text">
+    <string>Region Layer</string>
+   </property>
+  </action>
+  <action name="actionHydrology_Layer">
+   <property name="text">
+    <string>Hydrology Layer</string>
+   </property>
+  </action>
+  <action name="actionSettlement_Layer">
+   <property name="text">
+    <string>Settlement Layer</string>
+   </property>
+  </action>
+  <action name="actionClimate_Layer_2">
+   <property name="text">
+    <string>Climate Layer</string>
+   </property>
+  </action>
+  <action name="actionRegion_Layer_2">
+   <property name="text">
+    <string>Region Layer</string>
+   </property>
+  </action>
  </widget>
  <customwidgets>
   <customwidget>
-   <class>MapView</class>
+   <class>LayerView</class>
    <extends>QGraphicsView</extends>
-   <header>map_view</header>
+   <header>layer_view</header>
   </customwidget>
  </customwidgets>
  <resources/>

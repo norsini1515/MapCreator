@@ -4,7 +4,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QGraphicsView
 
 
-class MapView(QGraphicsView):
+class LayerView(QGraphicsView):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
@@ -20,7 +20,7 @@ class MapView(QGraphicsView):
         self.scale(factor, factor)
 
     def mousePressEvent(self, event):
-        # Enable panning with middle mouse (optional but feels great)
+        # Enable panning with middle mouse
         if event.button() == Qt.MouseButton.MiddleButton:
             self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
             fake = event
