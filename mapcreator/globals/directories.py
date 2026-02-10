@@ -15,6 +15,7 @@ CONFIG_DIR = BASE_DIR / "config"
 
 # DATA DIRECTORIES ---------------------
 DATA_DIR = BASE_DIR / "data"
+UI_LAYOUTS_DIR = DATA_DIR / "ui_layouts"
 PROCESSED_DATA_DIR = DATA_DIR / "processed"
 TEST_DATA_DIR = PROCESSED_DATA_DIR / "test_data"
 

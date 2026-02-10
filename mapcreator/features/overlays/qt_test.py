@@ -1,18 +1,135 @@
-from PySide6.QtUiTools import QUiLoader
-from PySide6.QtCore import QFile
-from PySide6.QtWidgets import QWidget, QApplication
-'''
-launched qt designer with: pyside6-designer
-created a simple ui with a button and a label, saved as test.ui
+from __future__ import annotations
 
-'''
+from pathlib import Path
+
+from PySide6.QtUiTools import QUiLoader
+from PySide6.QtCore import QFile, Qt
+from PySide6.QtGui import QImage, QPixmap
+from PySide6.QtWidgets import (
+    QApplication,
+    QFileDialog,
+    QGraphicsScene,
+    QGraphicsPixmapItem,
+    QGraphicsView,
+)
+
+from mapcreator import directories as _dirs
+from map_view import MapView
+
+# sys.exit()  # temporary to prevent accidental execution while developing
+
+class Loader(QUiLoader):
+    def createWidget(self, className, parent=None, name=""):
+        # MUST match the "Promoted class name" in Designer exactly
+        if className == "MapView":
+            w = MapView(parent)
+            w.setObjectName(name)
+            return w
+        return super().createWidget(className, parent, name)
+    
+def attach_basic_canvas_behaviors(view: QGraphicsView) -> None:
+    """
+    Configure QGraphicsView for a map-canvas feel:
+      - drag to pan
+      - wheel to zoom (anchored under mouse)
+    """
+    view.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
+    view.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
+    view.setResizeAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
+
+    # Store scale state if you want later; for now we just scale directly.
+    old_wheel_event = view.wheelEvent
+
+    def wheelEvent(event):
+        # Zoom factor
+        factor = 1.15 if event.angleDelta().y() > 0 else (1 / 1.15)
+        view.scale(factor, factor)
+
+    view.wheelEvent = wheelEvent  # monkey-patch for MVP (we’ll subclass later)
+
+
+def new_raster_layer(window, scene: QGraphicsScene, layers_list) -> None:
+    """
+    Opens a file dialog, loads an image, adds it as a QGraphicsPixmapItem,
+    and adds a row to the layers list.
+    """
+    path_str, _ = QFileDialog.getOpenFileName(
+        window,
+        "Open Raster",
+        "",
+        "Images (*.png *.jpg *.jpeg *.bmp *.tif *.tiff);;All Files (*)",
+    )
+    if not path_str:
+        return
+
+    path = Path(path_str)
+    name = path.stem
+
+    img = QImage(str(path))
+    if img.isNull():
+        # If this triggers for your .tif, tell me — we’ll swap in rasterio loading.
+        window.statusbar.showMessage(f"Failed to load image: {path.name}", 5000)
+        return
+
+    pix = QPixmap.fromImage(img)
+    item = QGraphicsPixmapItem(pix)
+
+    # Put new layers on top
+    item.setZValue(scene.items().__len__())
+
+    scene.addItem(item)
+    layers_list.addItem(name)
+    layers_list.setCurrentRow(layers_list.count() - 1)
+
+    # Fit to view if first layer; otherwise leave zoom as-is
+    if scene.items().__len__() == 1:
+        view = window.findChild(QGraphicsView, "mapView")
+        if view is not None:
+            view.fitInView(item.boundingRect(), Qt.AspectRatioMode.KeepAspectRatio)
+
+    window.statusbar.showMessage(f"Loaded raster layer: {path.name}", 3000)
+
+
 if __name__ == "__main__":
     app = QApplication([])
-    loader = QUiLoader()
-    ui_file = QFile("test.ui")
+
+    loader = Loader()
+    ui_file = QFile(str(_dirs.UI_LAYOUTS_DIR / "main_app.ui"))
     ui_file.open(QFile.ReadOnly)
     window = loader.load(ui_file)
     ui_file.close()
+
+    # --- find widgets by objectName (must match Designer) ---
+    # map_view = window.findChild(QGraphicsView, "mapView")
+    map_view = window.findChild(MapView, "mapView")
+    layers_list = window.findChild(type(window.layersList), "layersList") if hasattr(window, "layersList") else None
+    if layers_list is None:
+        # safer fallback
+        from PySide6.QtWidgets import QListWidget
+        layers_list = window.findChild(QListWidget, "layersList")
+
+    action_new_raster = window.findChild(type(window.actionNewRaster_Layer), "actionNewRaster_Layer") if hasattr(window, "actionNewRaster_Layer") else None
+    if action_new_raster is None:
+        from PySide6.QtGui import QAction
+        action_new_raster = window.findChild(QAction, "actionNewRaster_Layer")
+
+    # if map_view is None or layers_list is None or action_new_raster is None:
+    #     raise RuntimeError(
+    #         "Could not find one of: mapView, layersList, actionNewRaster_Layer. "
+    #         "Check objectName values in Qt Designer."
+    #     )
+
+    # --- scene setup ---
+    scene = QGraphicsScene(window)
+    map_view.setScene(scene)
+
+    # --- canvas behaviors (pan/zoom) ---
+    attach_basic_canvas_behaviors(map_view)
+
+    # --- connect menu action ---
+    action_new_raster.triggered.connect(
+        lambda: new_raster_layer(window, scene, layers_list)
+    )
 
     window.show()
     app.exec()
