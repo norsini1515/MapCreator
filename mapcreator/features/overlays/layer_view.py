@@ -90,3 +90,28 @@ class LayerView(QGraphicsView):
             return
 
         super().mouseReleaseEvent(event)
+
+    def mouseDoubleClickEvent(self, event):
+        # Only react to left double-click (ignore middle/right)
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.reset_view()
+            event.accept()
+            return
+
+        super().mouseDoubleClickEvent(event)
+
+    def reset_view(self):
+        """
+        Reset zoom/pan by fitting the entire scene in view.
+        """
+        scene = self.scene()
+        if scene is None:
+            return
+
+        rect = scene.itemsBoundingRect()
+        if rect.isNull():
+            return
+
+        self.resetTransform()
+        self.fitInView(rect, Qt.AspectRatioMode.KeepAspectRatio)
+

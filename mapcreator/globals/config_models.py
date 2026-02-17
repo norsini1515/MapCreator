@@ -206,6 +206,7 @@ ConfigKind = Literal[
     "extract",
     "class_registry",
     "class_run_scheme",
+    "class_configs",
 ]
 
 
@@ -232,6 +233,15 @@ def read_config_file(
     kind: Literal["class_run_scheme"],
 ) -> RunSchemeConfig:
     ...
+
+@overload
+def read_config_file(
+    path: Path | str | None,
+    *,
+    kind: Literal["class_configs"],
+) -> ClassConfig:
+    ...
+
 
 def resolve_config_path(path: Path | str | None, kind: ConfigKind) -> Path:
     if path is not None:
@@ -393,7 +403,7 @@ def read_config_file(
     path: Path | str | None,
     *,
     kind: ConfigKind,
-) -> ExtractConfig | ClassRegistry | RunSchemeConfig:
+) -> ExtractConfig | ClassRegistry | RunSchemeConfig | ClassConfig:
     """Read a YAML config file into a typed dataclass.
 
     Parameters
@@ -406,13 +416,26 @@ def read_config_file(
         "class_registry" for class registry configs (``ClassRegistry``)
         "class_run_scheme" for class run scheme configs (``RunSchemeConfig``)
     """
+    print(f"Reading config file for kind='{kind}' with path='{path}'...")
+    
+    if kind == "class_configs":
+        class_reg_path = resolve_config_path(path, "class_registry")
+        info(f"Loaded class registry from {class_reg_path}")
+        class_reg_raw = load_yaml(class_reg_path)
+        
+        class_run_scheme_path = resolve_config_path(path, "class_run_scheme")
+        info(f"Loaded class run scheme from {class_run_scheme_path}")
+        class_run_scheme_raw = load_yaml(class_run_scheme_path)
 
+
+        return build_class_resolver(registry=build_class_registry(class_reg_raw), scheme=build_run_scheme_config(class_run_scheme_raw), validate=False)
+    
     resolved = resolve_config_path(path, kind)
     raw = load_yaml(resolved)
     
     if kind == "extract":
         return build_extract_config(raw)
-    
+
     elif kind == "class_registry":
         reg = build_class_registry(raw)
         info(f"Loaded class registry from {resolved}")
