@@ -1,3 +1,12 @@
+"""
+Docstring for mapcreator.features.overlays.qt_test
+
+The entrace point for testing Qt integration. 
+
+Loads a simple UI with a QGraphicsView and a menu action to add raster layers.
+Working on this to be the basis for working on bringing life into the map.
+overlays development, but also to test that the basic Qt setup is working correctly before we build more complex features on top of it.
+"""
 from __future__ import annotations
 
 from pathlib import Path
@@ -13,7 +22,9 @@ from PySide6.QtWidgets import (
     QGraphicsView,
 )
 
-from mapcreator import directories as _dirs
+from mapcreator import (directories as _dirs,
+                        config_models
+    )
 from mapcreator.features.overlays.layer_view import LayerView
 
 # sys.exit()  # temporary to prevent accidental execution while developing
@@ -27,32 +38,12 @@ class Loader(QUiLoader):
             return w
         return super().createWidget(className, parent, name)
     
-def attach_basic_canvas_behaviors(view: QGraphicsView) -> None:
-    """
-    Configure QGraphicsView for a map-canvas feel:
-      - drag to pan
-      - wheel to zoom (anchored under mouse)
-    """
-    view.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
-    view.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
-    view.setResizeAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
-
-    # Store scale state if you want later; for now we just scale directly.
-    old_wheel_event = view.wheelEvent
-
-    def wheelEvent(event):
-        # Zoom factor
-        factor = 1.15 if event.angleDelta().y() > 0 else (1 / 1.15)
-        view.scale(factor, factor)
-
-    view.wheelEvent = wheelEvent  # monkey-patch for MVP (we’ll subclass later)
-
-
 def new_raster_layer(window, scene: QGraphicsScene, layers_list) -> None:
     """
     Opens a file dialog, loads an image, adds it as a QGraphicsPixmapItem,
     and adds a row to the layers list.
     """
+    # get path from user
     path_str, _ = QFileDialog.getOpenFileName(
         window,
         "Open Raster",
@@ -99,12 +90,18 @@ if __name__ == "__main__":
     window = loader.load(ui_file)
     ui_file.close()
 
+    class_reg = config_models.read_config_file(None, kind="class_registry")
+
+
+
     # --- find widgets by objectName (must match Designer) ---
     # map_view = window.findChild(QGraphicsView, "mapView")
     map_view = window.findChild(LayerView, "LayerView")
     print(f"map_view: {type(map_view)}")
+
     layers_list = window.findChild(type(window.layersList), "layersList") if hasattr(window, "layersList") else None
     if layers_list is None:
+        print("Falling back to QListWidget for layers_list")
         # safer fallback
         from PySide6.QtWidgets import QListWidget
         layers_list = window.findChild(QListWidget, "layersList")
@@ -123,9 +120,6 @@ if __name__ == "__main__":
     # --- scene setup ---
     scene = QGraphicsScene(window)
     map_view.setScene(scene)
-
-    # --- canvas behaviors (pan/zoom) ---
-    attach_basic_canvas_behaviors(map_view)
 
     # --- connect menu action ---
     action_new_raster.triggered.connect(

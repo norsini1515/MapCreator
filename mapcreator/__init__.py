@@ -1,5 +1,5 @@
 from . import globals
-from .globals import configs, directories
+from .globals import configs, directories, config_models
 #from .globals import flood_fill_img, invert_image, preprocess_image
 
 from .scripts import extract_images

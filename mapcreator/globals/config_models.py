@@ -36,6 +36,9 @@ class ClassDef:
     """Definition of a single class ID within a section."""
     name: str
     color: str
+    role: str | None = None #apples to palletete. Used for overlaying
+    strength: float | None = None #applies to palette. Used for overlaying
+    smooth_px: int | None = None #applies to palette. Used for overlaying
 
 @dataclass(frozen=True)
 class ClassRegistry:
@@ -53,7 +56,31 @@ class ClassRegistry:
                 f"Missing class definition for section='{section}', id={class_id}. "
                 f"Sections={available_sections}. IDs in section={available_ids}"
             ) from exc
-
+    def get_roles(self, section: str, role:str|None=None) -> Dict[int, str]:
+        """Return a mapping of class_id to role for all classes in the given section."""
+        if role is None:
+            try:
+                return {class_id: str(class_def.role) for class_id, class_def in self.defines[section].items()}
+            except KeyError as exc:
+                available_sections = sorted(self.defines)
+                raise KeyError(
+                    f"Missing section='{section}' when getting roles. "
+                    f"Available sections={available_sections}."
+                ) from exc
+        else:
+            role_defs = {}
+            for class_id, class_def in self.defines.get(section, {}).items():
+                if class_def.role == role:
+                    role_defs[class_id] = class_def
+            if not role_defs:
+                available_roles = set(
+                    class_def.role for class_def in self.defines.get(section, {}).values()
+                )
+                raise KeyError(
+                    f"No classes with role='{role}' found in section='{section}'. "
+                    f"Available roles in section={available_roles}."
+                )
+            return role_defs
 @dataclass(frozen=True)
 class RunSchemeConfig:
     # section -> {"odd": id, "even": id}
@@ -128,6 +155,10 @@ class ClassConfig:
             odd_cfg[section] = self.resolve(section=section, parity="odd")
 
         return even_cfg, odd_cfg
+    
+    def get_roles(self, section: str, role:str|None=None) -> Dict[int, str]:
+        """Return a mapping of class_id to role for all classes in the given section."""
+        return self.registry.get_roles(section=section, role=role)
 
 @dataclass
 class ExtractConfig:
@@ -314,23 +345,26 @@ def build_class_registry(raw: Dict[str, Any]) -> ClassRegistry:
             if "color" not in spec:
                 raise ValueError(f"Missing 'color' for section='{section}', id={class_id}.")
             name = spec.get("name", str(class_id))
+            role = spec.get("role", None)
+            strength = spec.get("strength", None)
+            smooth_px = spec.get("smooth_px", None)
 
             # Special-case "default" so each section can declare a fallback
             # definition that is used when the run scheme doesn't define a
             # parity-specific id.
             if class_id == "default":
-                defines[section][DEFAULT_CLASS_ID] = ClassDef(name=name, color=str(spec["color"]))
-                continue
+                class_id = DEFAULT_CLASS_ID
+            else:
+                try:
+                    class_id = int(class_id)
+                except ValueError as exc:
+                    raise ValueError(
+                        f"Invalid class id '{class_id}' for section='{section}'. "
+                        "Expected an integer id or the special key 'default'."
+                    ) from exc
+                    # continue
 
-            try:
-                numeric_id = int(class_id)
-            except ValueError as exc:
-                raise ValueError(
-                    f"Invalid class id '{class_id}' for section='{section}'. "
-                    "Expected an integer id or the special key 'default'."
-                ) from exc
-
-            defines[section][numeric_id] = ClassDef(name=name, color=str(spec["color"]))
+            defines[section][class_id] = ClassDef(name=name, color=str(spec["color"]), role=role, strength=strength, smooth_px=smooth_px)
 
     return ClassRegistry(defines=defines)
 
@@ -422,30 +456,31 @@ if __name__ == "__main__":
         pprint(class_cfg.__dict__)
         print('-'*100, sep='\n')
 
-        process_step("Resolving class for section='base', parity='odd'...")
-        section_id, section_class = class_cfg.resolve(section="base", parity="odd")
-        print(f"{section_id=}, {section_class=}")
-        print('-'*100, sep='\n')
+        # process_step("Resolving class for section='base', parity='odd'...")
+        # section_id, section_class = class_cfg.resolve(section="base", parity="odd")
+        # print(f"{section_id=}, {section_class=}")
+        # print('-'*100, sep='\n')
 
-        process_step("Getting even and odd defs...")
-        even_defs, odd_defs = class_cfg.get_even_odd_configs()
-        print("Even defs:")
-        pprint(even_defs)
-        print("Odd defs:")
-        pprint(odd_defs)
-        print('-'*100, sep='\n')
+        # process_step("Getting even and odd defs...")
+        # even_defs, odd_defs = class_cfg.get_even_odd_configs()
+        # print("Even defs:")
+        # pprint(even_defs)
+        # print("Odd defs:")
+        # pprint(odd_defs)
+        # print('-'*100, sep='\n')
 
         process_step("Getting run scheme sections...")
         print(class_cfg.get_run_scheme_sections())
         print('-'*100, sep='\n')
 
-        
-        for section_classification in class_cfg.get_run_scheme_sections():
-            even_id, even_def = even_defs[section_classification]
-            odd_id, odd_def = odd_defs[section_classification]
-            info(f"[{section_classification}] even -> {even_id} ({even_def.name})")
-            info(f"[{section_classification}]  odd -> {odd_id} ({odd_def.name})")
-            print()
+        print(class_cfg.get_roles(section="terrain", role="mountain"))
+        # for section_classification in class_cfg.get_run_scheme_sections():
+        #     even_id, even_def = even_defs[section_classification]
+        #     odd_id, odd_def = odd_defs[section_classification]
+        #     info(f"[{section_classification}] even -> {even_id} ({even_def.name})")
+        #     info(f"[{section_classification}]  odd -> {odd_id} ({odd_def.name})")
+        #     print()
+
     # ------------------------------------------------------------------
     #     info("Testing read_config_file for 'class_registry'...")
     #     class_registry_cfg = read_config_file(None, kind="class_registry")
