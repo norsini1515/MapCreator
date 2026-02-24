@@ -36,20 +36,17 @@
    <widget class="QDockWidget" name="LayerControl">
     <property name="geometry">
      <rect>
-      <x>840</x>
+      <x>850</x>
       <y>0</y>
-      <width>271</width>
-      <height>251</height>
+      <width>261</width>
+      <height>301</height>
      </rect>
     </property>
     <property name="styleSheet">
      <string notr="true"/>
     </property>
-    <property name="floating">
-     <bool>true</bool>
-    </property>
     <widget class="QWidget" name="dockWidgetContents_2">
-     <widget class="QLabel" name="active_pallete_label">
+     <widget class="QLabel" name="label">
       <property name="geometry">
        <rect>
         <x>10</x>
@@ -95,7 +92,7 @@
      </widget>
     </widget>
    </widget>
-   <widget class="QLabel" name="layer_view_label">
+   <widget class="QLabel" name="MapNameLabel">
     <property name="geometry">
      <rect>
       <x>40</x>
@@ -113,50 +110,29 @@
      <string>MapCreator: Ettrial</string>
     </property>
    </widget>
-   <widget class="QDockWidget" name="OpenLayersListDock">
+   <widget class="QDockWidget" name="dockWidget">
     <property name="geometry">
      <rect>
       <x>840</x>
-      <y>280</y>
-      <width>274</width>
-      <height>270</height>
+      <y>320</y>
+      <width>271</width>
+      <height>421</height>
      </rect>
     </property>
-    <property name="floating">
-     <bool>true</bool>
-    </property>
-    <property name="windowTitle">
-     <string>Layers</string>
-    </property>
-    <widget class="QWidget" name="dockWidgetContents_Layers">
-     <layout class="QGridLayout" name="gridLayout">
-      <item row="0" column="0">
-       <widget class="QLabel" name="open_layers_label">
-        <property name="font">
-         <font>
-          <pointsize>12</pointsize>
-         </font>
-        </property>
-        <property name="text">
-         <string>Open Layers:</string>
-        </property>
-       </widget>
-      </item>
-      <item row="1" column="0">
-       <widget class="Line" name="line_2">
-        <property name="orientation">
-         <enum>Qt::Orientation::Horizontal</enum>
-        </property>
-       </widget>
-      </item>
-      <item row="2" column="0">
-       <widget class="OpenLayersList" name="OpenLayersList">
-        <property name="styleSheet">
-         <string notr="true"/>
-        </property>
-       </widget>
-      </item>
-     </layout>
+    <widget class="QWidget" name="dockWidgetContents_8">
+     <widget class="OpenLayersList" name="OpenLayersList">
+      <property name="geometry">
+       <rect>
+        <x>0</x>
+        <y>0</y>
+        <width>271</width>
+        <height>501</height>
+       </rect>
+      </property>
+      <property name="styleSheet">
+       <string notr="true"/>
+      </property>
+     </widget>
     </widget>
    </widget>
   </widget>

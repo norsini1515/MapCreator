@@ -13,19 +13,19 @@ Responsibilities:
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Iterable
+from typing import cast
 
 from PySide6.QtUiTools import QUiLoader
-from PySide6.QtCore import QFile, Qt
+from PySide6.QtCore import QFile, Qt, QIODevice
 from PySide6.QtGui import QAction, QImage, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
+    QDockWidget,
     QFileDialog,
     QGraphicsScene,
     QGraphicsPixmapItem,
-    QListWidget,
     QMainWindow,
     QVBoxLayout,
     QComboBox,
@@ -37,15 +37,8 @@ from PySide6.QtWidgets import (
 
 from mapcreator import directories as _dirs
 from mapcreator.features.overlays.layer_view import LayerView
+from mapcreator.features.overlays.openlayerslist import OpenLayersList, RasterLayer
 from mapcreator.globals.config_models import read_config_file
-
-@dataclass
-class RasterLayer:
-    """Simple model so list-widget rows can map to real scene items."""
-    name: str
-    schema: str
-    path: Path
-    item: QGraphicsPixmapItem
 
 class NewLayerDialog(QDialog):
     """
@@ -102,7 +95,6 @@ class NewLayerDialog(QDialog):
         if result == QDialog.DialogCode.Accepted:
             return dlg.selected_schema
         return None
-    
 
 class Loader(QUiLoader):
     """QUiLoader that instantiates promoted widgets (e.g., LayerView) correctly."""
@@ -110,6 +102,11 @@ class Loader(QUiLoader):
         # MUST match the "Promoted class name" in Designer exactly
         if className == "LayerView":
             w = LayerView(parent)
+            w.setObjectName(name)
+            return w
+        if className == "OpenLayersList":
+            print("Creating OpenLayersList widget for", name)
+            w = OpenLayersList(parent)
             w.setObjectName(name)
             return w
         return super().createWidget(className, parent, name)
@@ -124,21 +121,23 @@ class MapCreator:
         app.run()
     """
 
-    def __init__(self) -> None:
+    def __init__(self, class_cfg=None) -> None:
         self.qt_app: QApplication = QApplication([])
         self.window: Optional[QMainWindow] = None
 
         self.map_view: Optional[LayerView] = None
         self.scene: Optional[QGraphicsScene] = None
-        self.layers_list: Optional[QListWidget] = None
+        self.open_layers_list: Optional[OpenLayersList] = None
+        self.layer_label: Optional[QLabel] = None
 
         # Actions (grabbed from UI)
         self.action_new_raster: Optional[QAction] = None
+        self.action_layer_list: Optional[QAction] = None
 
-        self.class_cfg = read_config_file(None, kind="class_configs")
+        self.layer_control_dock: Optional[QDockWidget] = None
+        self.open_layers_dock: Optional[QDockWidget] = None
 
-        # Simple in-memory layer registry (index aligns with layers_list row)
-        self.raster_layers: list[RasterLayer] = []
+        self.class_cfg = class_cfg or read_config_file(None, kind="class_configs")
 
         self._build_ui()
         self._wire_events()
@@ -150,12 +149,14 @@ class MapCreator:
         """Load UI, resolve widgets, and initialize the scene."""
         loader = Loader()
 
-        ui_path = _dirs.UI_LAYOUTS_DIR / "main_app.ui"
+        # ui_path = _dirs.UI_LAYOUTS_DIR / "main_app.ui"
+        ui_path = _dirs.UI_LAYOUTS_DIR / "main_app_fixed.ui"
+        ui_path = _dirs.UI_LAYOUTS_DIR / "main_app_fixed_layout.ui"
         ui_file = QFile(str(ui_path))
         if not ui_file.exists():
             raise FileNotFoundError(f"UI file not found: {ui_path}")
 
-        if not ui_file.open(QFile.ReadOnly):
+        if not ui_file.open(QIODevice.OpenModeFlag.ReadOnly):
             raise RuntimeError(f"Failed to open UI file: {ui_path}")
 
         window = loader.load(ui_file)
@@ -164,7 +165,7 @@ class MapCreator:
         if window is None:
             raise RuntimeError(f"Failed to load UI from: {ui_path}")
 
-        self.window = window
+        self.window = cast(QMainWindow, window)
 
         # --- Resolve widgets by objectName ---
         self.map_view = self.window.findChild(LayerView, "LayerView")
@@ -174,14 +175,24 @@ class MapCreator:
                 "Check Qt Designer objectName='LayerView' and promoted class name='LayerView'."
             )
 
-        # Layers list (prefer attribute if Designer created it, else findChild)
-        if hasattr(self.window, "layersList"):
-            self.layers_list = getattr(self.window, "layersList")
-        else:
-            self.layers_list = self.window.findChild(QListWidget, "layersList")
+        # Docks + layers list
+        self.layer_control_dock = self.window.findChild(QDockWidget, "LayerControl")
+        self.open_layers_dock = self.window.findChild(QDockWidget, "OpenLayersListDock")
 
-        if self.layers_list is None:
-            raise RuntimeError("Could not find layers list widget (objectName='layersList').")
+        self.open_layers_list = self.window.findChild(OpenLayersList, "OpenLayersList")
+        if self.open_layers_list is None and self.open_layers_dock is not None:
+            self.open_layers_list = self.open_layers_dock.findChild(OpenLayersList, "OpenLayersList")
+            if self.open_layers_list is None:
+                dock_widget = self.open_layers_dock.widget()
+                if isinstance(dock_widget, OpenLayersList):
+                    self.open_layers_list = dock_widget
+
+        if self.open_layers_list is None:
+            raise RuntimeError(
+                "Could not find layers list widget (objectName='OpenLayersList'). "
+                "In Qt Designer, create a QDockWidget named 'OpenLayersListDock' and place a promoted "
+                "OpenLayersList (QListWidget subclass) inside it named 'OpenLayersList'."
+            )
 
         # Action
         if hasattr(self.window, "actionNew_Layer"):
@@ -194,19 +205,42 @@ class MapCreator:
         if self.action_new_raster is None:
             raise RuntimeError("Could not find actionNew_Layer action in UI.")
 
+        if hasattr(self.window, "actionLayer_List"):
+            self.action_layer_list = getattr(self.window, "actionLayer_List")
+        else:
+            self.action_layer_list = self.window.findChild(QAction, "actionLayer_List")
+
         # --- Scene setup ---
         self.scene = QGraphicsScene(self.window)
         self.map_view.setScene(self.scene)
 
+        # --- Dock placement ---
+        # Ensure the layers dock is dockable and placed below the layer-control dock.
+        if self.layer_control_dock is not None and self.open_layers_dock is not None:
+            if self.layer_control_dock.parent() is not self.window:
+                self.layer_control_dock.setParent(self.window)
+            if self.open_layers_dock.parent() is not self.window:
+                self.open_layers_dock.setParent(self.window)
+
+            # Put both docks on the right; split vertically to stack.
+            self.window.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.layer_control_dock)
+            self.window.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.open_layers_dock)
+            self.window.splitDockWidget(self.layer_control_dock, self.open_layers_dock, Qt.Orientation.Vertical)
+
     def _wire_events(self) -> None:
         """Connect UI actions/signals to handlers."""
         assert self.action_new_raster is not None
-        assert self.layers_list is not None
-
-        # Optional: click a row to "select" layer item in scene (MVP)
-        self.layers_list.currentRowChanged.connect(self._on_layer_selected)
+        assert self.open_layers_list is not None
 
         self.action_new_raster.triggered.connect(self.new_layer_flow)
+
+        # Toggle for the Layers dock (View -> Dockables -> Layer List)
+        if self.action_layer_list is not None and self.open_layers_dock is not None:
+            self.action_layer_list.setCheckable(True)
+            self.action_layer_list.setChecked(self.open_layers_dock.isVisible())
+
+            self.action_layer_list.toggled.connect(self.open_layers_dock.setVisible)
+            self.open_layers_dock.visibilityChanged.connect(self.action_layer_list.setChecked)
 
     # -----------------------------
     # Public run loop
@@ -255,7 +289,7 @@ class MapCreator:
         assert self.window is not None
         assert self.scene is not None
         assert self.map_view is not None
-        assert self.layers_list is not None
+        assert self.open_layers_list is not None
 
         path_str, _ = QFileDialog.getOpenFileName(
             self.window,
@@ -273,7 +307,7 @@ class MapCreator:
         assert self.window is not None
         assert self.scene is not None
         assert self.map_view is not None
-        assert self.layers_list is not None
+        assert self.open_layers_list is not None
 
         name = path.stem
 
@@ -290,48 +324,36 @@ class MapCreator:
         item.setZValue(len(self.scene.items()))
 
         self.scene.addItem(item)
-        self.layers_list.addItem(name)
 
         layer = RasterLayer(name=name, path=path, item=item, schema=schema or "unknown")
-        self.raster_layers.append(layer)
-
-        self.layers_list.setCurrentRow(self.layers_list.count() - 1)
+        self.open_layers_list.add_raster_layer(layer)
 
         # Fit to view if first layer; otherwise preserve current zoom
-        if len(self.raster_layers) == 1:
-            self.map_view.fitInView(item.boundingRect(), Qt.AspectRatioMode.KeepAspectRatio)
+        if len(self.open_layers_list.raster_layers) == 1:
+            self.map_view.fitInView(item.sceneBoundingRect(), Qt.AspectRatioMode.KeepAspectRatio)
 
         self._status(f"Loaded raster layer: {path.name}", 3000)
 
     # -----------------------------
     # Small helpers
     # -----------------------------
-    def _on_layer_selected(self, row: int) -> None:
-        """MVP: visually indicate selected layer by changing opacity slightly."""
-        if row < 0 or row >= len(self.raster_layers):
-            return
-
-        # Reset all
-        for lyr in self.raster_layers:
-            lyr.item.setOpacity(1.0)
-
-        # Highlight selected
-        self.raster_layers[row].item.setOpacity(0.85)
-
     def _status(self, msg: str, timeout_ms: int = 2000) -> None:
         """Write to status bar if available."""
         if self.window is None:
             return
-        if hasattr(self.window, "statusbar") and self.window.statusbar is not None:
-            self.window.statusbar.showMessage(msg, timeout_ms)
-        else:
-            # fallback for early dev
-            print(msg)
+
+        status_bar = self.window.statusBar()
+        if status_bar is not None:
+            status_bar.showMessage(msg, timeout_ms)
+            return
+
+        # fallback for early dev
+        print(msg)
 
 
 if __name__ == "__main__":
-    class_cfg = read_config_file(None, kind="class_configs")
+    # class_cfg = read_config_file(None, kind="class_configs")
     # print(class_cfg.__dict__)
-    schemas = class_cfg.get_run_scheme_sections()
-    print(f"{schemas=}")
+    # schemas = class_cfg.get_run_scheme_sections()
+    # print(f"{schemas=}")
     MapCreator().run()
