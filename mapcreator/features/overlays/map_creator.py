@@ -33,12 +33,16 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QLabel,
     QFormLayout,
+    QPushButton,
 )
 
 from mapcreator import directories as _dirs
 from mapcreator.features.overlays.layer_view import LayerView
-from mapcreator.features.overlays.openlayerslist import OpenLayersList, RasterLayer
+from mapcreator.features.overlays.open_layers_list import OpenLayersList, RasterLayer
+from mapcreator.features.overlays.palette_controls import PaletteButton, PaletteClass
+
 from mapcreator.globals.config_models import read_config_file
+from mapcreator.globals.logutil import info, process_step, error, setting_config, success, warn
 
 class NewLayerDialog(QDialog):
     """
@@ -105,10 +109,11 @@ class Loader(QUiLoader):
             w.setObjectName(name)
             return w
         if className == "OpenLayersList":
-            print("Creating OpenLayersList widget for", name)
+            info(f"[Loader] Creating OpenLayersList widget for {name}")
             w = OpenLayersList(parent)
             w.setObjectName(name)
             return w
+       
         return super().createWidget(className, parent, name)
 
 
@@ -150,7 +155,7 @@ class MapCreator:
         loader = Loader()
 
         # ui_path = _dirs.UI_LAYOUTS_DIR / "main_app.ui"
-        ui_path = _dirs.UI_LAYOUTS_DIR / "main_app_fixed.ui"
+        # ui_path = _dirs.UI_LAYOUTS_DIR / "main_app_fixed.ui"
         ui_path = _dirs.UI_LAYOUTS_DIR / "main_app_fixed_layout.ui"
         ui_file = QFile(str(ui_path))
         if not ui_file.exists():
@@ -197,9 +202,9 @@ class MapCreator:
         # Action
         if hasattr(self.window, "actionNew_Layer"):
             self.action_new_raster = getattr(self.window, "actionNew_Layer")
-            print("Found actionNew_Layer as attribute of window.")
+            success("Found actionNew_Layer as attribute of window.")
         else:
-            print("Warning: actionNew_Layer not found as attribute; trying findChild...")
+            warn("Warning: actionNew_Layer not found as attribute; trying findChild...")
             self.action_new_raster = self.window.findChild(QAction, "actionNew_Layer")
 
         if self.action_new_raster is None:
@@ -348,7 +353,7 @@ class MapCreator:
             return
 
         # fallback for early dev
-        print(msg)
+        info("[STATUS_PRINT] " + msg)
 
 
 if __name__ == "__main__":

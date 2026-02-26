@@ -46,41 +46,70 @@ class ClassRegistry:
     # "default" entries in the YAML are stored under id DEFAULT_CLASS_ID (-1).
     defines: Mapping[str, Mapping[int, ClassDef]] = field(default_factory=dict)
 
-    def get(self, section: str, class_id: int) -> ClassDef:
+    def get(self, schema: str, class_id: int) -> ClassDef:
         try:
-            return self.defines[section][class_id]
+            return self.defines[schema][class_id]
         except KeyError as exc:
-            available_sections = sorted(self.defines)
-            available_ids = sorted(self.defines.get(section, {}).keys())
+            available_sechema = sorted(self.defines)
+            available_ids = sorted(self.defines.get(schema, {}).keys())
             raise KeyError(
-                f"Missing class definition for section='{section}', id={class_id}. "
-                f"Sections={available_sections}. IDs in section={available_ids}"
+                f"Missing class definition for section='{schema}', id={class_id}. "
+                f"Schema={available_sechema}. IDs in section={available_ids}"
             ) from exc
-    def get_roles(self, section: str, role:str|None=None) -> Dict[int, str]:
-        """Return a mapping of class_id to role for all classes in the given section."""
+    
+    def get_defines(self, schema: str, role:str|None=None, key:str|None=None):
+        '''
+        return the defines for a given schema
+        if role provided return defines within schema+role
+        if key prodvided return defines within schme (+role) + key (ex. color, name, etc.)
+        '''
+        if schema not in self.defines:
+            available_schemas = sorted(self.defines)
+            raise KeyError(
+                f"Missing schema='{schema}' in registry. Available schemas={available_schemas}."
+            )
+        
+        print(schema, self.defines[schema])
+        filtered_defines = {}
+        for id, classdef in self.defines[schema].items():
+            #role not available on classdef, skip to next one
+            if role is not None and classdef.role != role:
+                continue
+            #key not available on classdef, skip to next one
+            if key is not None and not hasattr(classdef, key):
+                continue
+            
+            if role is not None:
+                pass
+            else:
+                pass
+
+    def get_roles(self, schema: str, role:str|None=None) -> Dict[int, str]:
+        """Return a mapping of class_id to role for all classes in the given schema."""
         if role is None:
             try:
-                return {class_id: str(class_def.role) for class_id, class_def in self.defines[section].items()}
+                return {class_id: str(class_def.role) for class_id, class_def in self.defines[schema].items()}
             except KeyError as exc:
                 available_sections = sorted(self.defines)
                 raise KeyError(
-                    f"Missing section='{section}' when getting roles. "
+                    f"Missing section='{schema}' when getting roles. "
                     f"Available sections={available_sections}."
                 ) from exc
         else:
             role_defs = {}
-            for class_id, class_def in self.defines.get(section, {}).items():
+            for class_id, class_def in self.defines.get(schema, {}).items():
                 if class_def.role == role:
                     role_defs[class_id] = class_def
             if not role_defs:
                 available_roles = set(
-                    class_def.role for class_def in self.defines.get(section, {}).values()
+                    class_def.role for class_def in self.defines.get(schema, {}).values()
                 )
                 raise KeyError(
-                    f"No classes with role='{role}' found in section='{section}'. "
+                    f"No classes with role='{role}' found in section='{schema}'. "
                     f"Available roles in section={available_roles}."
                 )
             return role_defs
+
 @dataclass(frozen=True)
 class RunSchemeConfig:
     # section -> {"odd": id, "even": id}
@@ -156,9 +185,11 @@ class ClassConfig:
 
         return even_cfg, odd_cfg
     
-    def get_roles(self, section: str, role:str|None=None) -> Dict[int, str]:
+    def get_roles(self, schema: str, role:str|None=None) -> Dict[int, str]:
         """Return a mapping of class_id to role for all classes in the given section."""
-        return self.registry.get_roles(section=section, role=role)
+        return self.registry.get_roles(schema=schema, role=role)
+    def get_registry_defines(self, schema: str, role:str|None=None):
+        return self.registry.get_defines(schema=schema, role=role)
 
 @dataclass
 class ExtractConfig:
@@ -471,7 +502,8 @@ if __name__ == "__main__":
         print('-'*100, sep='\n')
     # ------------------------------------------------------------------
         info("Testing ClassConfig construction from ExtractConfig...")
-        class_cfg = read_class_resolver_from_extract(extract_cfg)
+        # class_cfg = read_class_resolver_from_extract(extract_cfg)
+        class_cfg = read_config_file(None, kind="class_configs")
         success("ClassConfig loaded successfully from ExtractConfig.")
         print("-"*100)
         
@@ -496,7 +528,11 @@ if __name__ == "__main__":
         print(class_cfg.get_run_scheme_sections())
         print('-'*100, sep='\n')
 
-        print(class_cfg.get_roles(section="terrain", role="mountain"))
+        # print(class_cfg.get_roles(section="terrain", role="mountain"))
+        print(class_cfg.get_roles(schema="terrain", role=None))
+
+        print('-'*100, sep="\n")
+        print(class_cfg.get_registry_defines("terrain", role=None))
         # for section_classification in class_cfg.get_run_scheme_sections():
         #     even_id, even_def = even_defs[section_classification]
         #     odd_id, odd_def = odd_defs[section_classification]

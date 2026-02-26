@@ -1,4 +1,4 @@
-<?xml version='1.0' encoding='utf-8'?>
+<?xml version="1.0" encoding="UTF-8"?>
 <ui version="4.0">
  <class>MainWindow</class>
  <widget class="QMainWindow" name="MainWindow">
@@ -7,8 +7,11 @@
     <x>0</x>
     <y>0</y>
     <width>1114</width>
-    <height>864</height>
+    <height>865</height>
    </rect>
+  </property>
+  <property name="acceptDrops">
+   <bool>true</bool>
   </property>
   <property name="windowTitle">
    <string>MainWindow</string>
@@ -52,9 +55,9 @@
     </property>
    </widget>
   </widget>
-  <widget class="QDockWidget" name="LayerControl">
+  <widget class="QDockWidget" name="layer_palette_controls_dock">
    <property name="styleSheet">
-    <string notr="true" />
+    <string notr="true"/>
    </property>
    <property name="floating">
     <bool>false</bool>
@@ -62,55 +65,92 @@
    <attribute name="dockWidgetArea">
     <number>2</number>
    </attribute>
-   <widget class="QWidget" name="dockWidgetContents_2">
-    <layout class="QVBoxLayout" name="verticalLayout_layercontrol_outer"><item><widget class="QWidget" name="layer_control_container"><layout class="QVBoxLayout" name="verticalLayout_layercontrol"><item><widget class="QLabel" name="active_pallete_label">
-     <property name="geometry">
-      <rect>
-       <x>10</x>
-       <y>10</y>
-       <width>99</width>
-       <height>21</height>
-      </rect>
-     </property>
-     <property name="font">
-      <font>
-       <pointsize>12</pointsize>
-      </font>
-     </property>
-     <property name="text">
-      <string>Active Pallette:</string>
-     </property>
-    </widget>
-    </item><item><widget class="Line" name="line">
-     <property name="geometry">
-      <rect>
-       <x>10</x>
-       <y>40</y>
-       <width>256</width>
-       <height>16</height>
-      </rect>
-     </property>
-     <property name="orientation">
-      <enum>Qt::Orientation::Horizontal</enum>
-     </property>
-    </widget>
-    </item><item><widget class="PalleteButton" name="pushButton">
-     <property name="geometry">
-      <rect>
-       <x>10</x>
-       <y>50</y>
-       <width>44</width>
-       <height>26</height>
-      </rect>
-     </property>
-     <property name="text">
-      <string />
-     </property>
-     <property name="flat">
-      <bool>true</bool>
-     </property>
-    </widget>
-   </item><item><spacer name="verticalSpacer_layercontrol"><property name="orientation"><enum>Qt::Vertical</enum></property><property name="sizeHint"><size><width>20</width><height>40</height></size></property></spacer></item></layout></widget></item></layout></widget>
+   <widget class="QWidget" name="PaletteControls_Contents">
+    <layout class="QVBoxLayout" name="verticalLayout">
+     <item>
+      <layout class="QVBoxLayout" name="PaletteControlsVLayout">
+       <item>
+        <layout class="QHBoxLayout" name="horizontalLayout">
+         <property name="sizeConstraint">
+          <enum>QLayout::SizeConstraint::SetFixedSize</enum>
+         </property>
+         <item>
+          <widget class="QLabel" name="active_palette_label">
+           <property name="sizePolicy">
+            <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
+             <horstretch>0</horstretch>
+             <verstretch>0</verstretch>
+            </sizepolicy>
+           </property>
+           <property name="minimumSize">
+            <size>
+             <width>0</width>
+             <height>30</height>
+            </size>
+           </property>
+           <property name="font">
+            <font>
+             <pointsize>12</pointsize>
+            </font>
+           </property>
+           <property name="text">
+            <string>Active Pallette: </string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <spacer name="horizontalSpacer">
+           <property name="orientation">
+            <enum>Qt::Orientation::Horizontal</enum>
+           </property>
+           <property name="sizeHint" stdset="0">
+            <size>
+             <width>40</width>
+             <height>20</height>
+            </size>
+           </property>
+          </spacer>
+         </item>
+        </layout>
+       </item>
+       <item>
+        <widget class="QScrollArea" name="scrollArea">
+         <property name="widgetResizable">
+          <bool>true</bool>
+         </property>
+         <widget class="QWidget" name="paletteButtonsWidget">
+          <property name="geometry">
+           <rect>
+            <x>0</x>
+            <y>0</y>
+            <width>252</width>
+            <height>245</height>
+           </rect>
+          </property>
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
+            <horstretch>0</horstretch>
+            <verstretch>0</verstretch>
+           </sizepolicy>
+          </property>
+          <widget class="QWidget" name="gridLayoutWidget">
+           <property name="geometry">
+            <rect>
+             <x>-11</x>
+             <y>-1</y>
+             <width>271</width>
+             <height>251</height>
+            </rect>
+           </property>
+           <layout class="QGridLayout" name="paletteButtonsGrid"/>
+          </widget>
+         </widget>
+        </widget>
+       </item>
+      </layout>
+     </item>
+    </layout>
+   </widget>
   </widget>
   <widget class="QDockWidget" name="OpenLayersListDock">
    <property name="floating">
@@ -123,51 +163,39 @@
     <number>2</number>
    </attribute>
    <widget class="QWidget" name="dockWidgetContents_Layers">
-    <layout class="QVBoxLayout" name="verticalLayout_openlayers_outer"><item><widget class="QWidget" name="open_layers_container"><layout class="QVBoxLayout" name="verticalLayout_openlayers"><item><widget class="QLabel" name="open_layers_label">
-     <property name="geometry">
-      <rect>
-       <x>9</x>
-       <y>9</y>
-       <width>90</width>
-       <height>21</height>
-      </rect>
-     </property>
-     <property name="font">
-      <font>
-       <pointsize>12</pointsize>
-      </font>
-     </property>
-     <property name="text">
-      <string>Open Layers:</string>
-     </property>
-    </widget>
-    </item><item><widget class="Line" name="line_2">
-     <property name="geometry">
-      <rect>
-       <x>9</x>
-       <y>36</y>
-       <width>256</width>
-       <height>16</height>
-      </rect>
-     </property>
-     <property name="orientation">
-      <enum>Qt::Orientation::Horizontal</enum>
-     </property>
-    </widget>
-    </item><item><widget class="OpenLayersList" name="OpenLayersList">
-     <property name="geometry">
-      <rect>
-       <x>9</x>
-       <y>45</y>
-       <width>256</width>
-       <height>192</height>
-      </rect>
-     </property>
-     <property name="styleSheet">
-      <string notr="true" />
-     </property>
-    </widget>
-   </item><item><spacer name="verticalSpacer_openlayers"><property name="orientation"><enum>Qt::Vertical</enum></property><property name="sizeHint"><size><width>20</width><height>40</height></size></property></spacer></item></layout></widget></item></layout></widget>
+    <layout class="QVBoxLayout" name="verticalLayout_openlayers_outer">
+     <item>
+      <layout class="QVBoxLayout" name="verticalLayout_openlayers">
+       <item>
+        <widget class="QLabel" name="open_layers_label">
+         <property name="font">
+          <font>
+           <pointsize>12</pointsize>
+          </font>
+         </property>
+         <property name="text">
+          <string>Open Layers:</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="Line" name="line_2">
+         <property name="orientation">
+          <enum>Qt::Orientation::Horizontal</enum>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="OpenLayersList" name="OpenLayersList">
+         <property name="styleSheet">
+          <string notr="true"/>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </item>
+    </layout>
+   </widget>
   </widget>
   <widget class="QMenuBar" name="menubar">
    <property name="geometry">
@@ -182,12 +210,12 @@
     <property name="title">
      <string>File</string>
     </property>
-    <addaction name="actionNew_Project" />
-    <addaction name="actionOpen_Project" />
-    <addaction name="actionSave_Project" />
-    <addaction name="separator" />
-    <addaction name="separator" />
-    <addaction name="actionNew_Layer" />
+    <addaction name="actionNew_Project"/>
+    <addaction name="actionOpen_Project"/>
+    <addaction name="actionSave_Project"/>
+    <addaction name="separator"/>
+    <addaction name="separator"/>
+    <addaction name="actionNew_Layer"/>
    </widget>
    <widget class="QMenu" name="menuView">
     <property name="title">
@@ -197,14 +225,14 @@
      <property name="title">
       <string>Dockables</string>
      </property>
-     <addaction name="actionLayer_List" />
+     <addaction name="actionLayer_List"/>
     </widget>
-    <addaction name="menuDockables" />
+    <addaction name="menuDockables"/>
    </widget>
-   <addaction name="menuFile" />
-   <addaction name="menuView" />
+   <addaction name="menuFile"/>
+   <addaction name="menuView"/>
   </widget>
-  <widget class="QStatusBar" name="statusbar" />
+  <widget class="QStatusBar" name="statusbar"/>
   <action name="actionOpen_Project">
    <property name="text">
     <string>Open Project</string>
@@ -233,11 +261,6 @@
  </widget>
  <customwidgets>
   <customwidget>
-   <class>PalleteButton</class>
-   <extends>QPushButton</extends>
-   <header>palletebutton.h</header>
-  </customwidget>
-  <customwidget>
    <class>LayerView</class>
    <extends>QGraphicsView</extends>
    <header>layerview.h</header>
@@ -248,6 +271,6 @@
    <header>openlayerslist.h</header>
   </customwidget>
  </customwidgets>
- <resources />
- <connections />
+ <resources/>
+ <connections/>
 </ui>
