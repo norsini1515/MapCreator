@@ -57,11 +57,10 @@ class ClassRegistry:
                 f"Schema={available_sechema}. IDs in section={available_ids}"
             ) from exc
     
-    def get_defines(self, schema: str, role:str|None=None, key:str|None=None):
+    def get_colors(self, schema: str, role:str|None=None) -> Dict[str, str]:
         '''
         return the defines for a given schema
         if role provided return defines within schema+role
-        if key prodvided return defines within schme (+role) + key (ex. color, name, etc.)
         '''
         if schema not in self.defines:
             available_schemas = sorted(self.defines)
@@ -75,14 +74,9 @@ class ClassRegistry:
             #role not available on classdef, skip to next one
             if role is not None and classdef.role != role:
                 continue
-            #key not available on classdef, skip to next one
-            if key is not None and not hasattr(classdef, key):
-                continue
             
-            if role is not None:
-                pass
-            else:
-                pass
+            filtered_defines[classdef.name] = classdef.color
+        return filtered_defines
 
     def get_roles(self, schema: str, role:str|None=None) -> Dict[int, str]:
         """Return a mapping of class_id to role for all classes in the given schema."""
@@ -188,8 +182,8 @@ class ClassConfig:
     def get_roles(self, schema: str, role:str|None=None) -> Dict[int, str]:
         """Return a mapping of class_id to role for all classes in the given section."""
         return self.registry.get_roles(schema=schema, role=role)
-    def get_registry_defines(self, schema: str, role:str|None=None):
-        return self.registry.get_defines(schema=schema, role=role)
+    def get_registry_colors(self, schema: str, role:str|None=None):
+        return self.registry.get_colors(schema=schema, role=role)
 
 @dataclass
 class ExtractConfig:
@@ -532,7 +526,9 @@ if __name__ == "__main__":
         print(class_cfg.get_roles(schema="terrain", role=None))
 
         print('-'*100, sep="\n")
-        print(class_cfg.get_registry_defines("terrain", role=None))
+        print("Getting registry defines for schema='terrain' and role=None...")
+        filtered_defines = class_cfg.get_registry_colors("terrain", role=None)
+        pprint(filtered_defines)
         # for section_classification in class_cfg.get_run_scheme_sections():
         #     even_id, even_def = even_defs[section_classification]
         #     odd_id, odd_def = odd_defs[section_classification]

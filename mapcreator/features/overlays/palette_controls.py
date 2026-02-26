@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (
 @dataclass(frozen=True)
 class PaletteClass:
     class_id: int
-    name: str
+    palette_name: str
     color_hex: str
 
 def _clear_layout(layout: QGridLayout) -> None:
@@ -108,7 +108,7 @@ class PaletteControls(QObject):
             classes.append(
                 PaletteClass(
                     class_id=class_id,
-                    name=str(meta.get("name", f"Class {class_id}")),
+                    palette_name=str(meta.get("name", f"Class {class_id}")),
                     color_hex=str(meta.get("color", "#cccccc")),
                 )
             )
@@ -120,7 +120,7 @@ class PaletteControls(QObject):
 
         for i, c in enumerate(classes):
             r, col = divmod(i, max(columns, 1))
-            btn = PaletteButton(class_id=c.class_id, name=c.name, color_hex=c.color_hex, parent=self._buttons_widget)
+            btn = PaletteButton(class_id=c.class_id, name=c.palette_name, color_hex=c.color_hex, parent=self._buttons_widget)
             btn.clicked.connect(lambda checked=False, b=btn: self._on_button_clicked(b))
             self._grid.addWidget(btn, r, col)
 

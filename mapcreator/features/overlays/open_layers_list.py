@@ -18,7 +18,7 @@ from mapcreator.globals.logutil import info, process_step, error, setting_config
 @dataclass
 class RasterLayer:
     """Simple model so list-widget rows can map to real scene items."""
-    name: str
+    layer_name: str 
     schema: str
     path: Path
     item: QGraphicsPixmapItem
@@ -36,8 +36,8 @@ class OpenLayersList(QListWidget):
     def add_raster_layer(self, layer: RasterLayer):
         """Adds a raster layer to the list."""
         self.raster_layers.append(layer)
-        info(f"Added layer: {layer.name} (schema: {layer.schema}, path: {layer.path})")
-        self.addItem(layer.name)
+        info(f"Added layer: {layer.layer_name} (schema: {layer.schema}, path: {layer.path})")
+        self.addItem(layer.layer_name)
         self.setCurrentRow(self.count() - 1)
 
     def _on_layer_selected(self, row: int) -> None:
