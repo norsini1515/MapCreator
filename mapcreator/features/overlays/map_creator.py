@@ -330,7 +330,7 @@ class MapCreator:
 
         self.scene.addItem(item)
 
-        layer = RasterLayer(name=name, path=path, item=item, schema=schema or "unknown")
+        layer = RasterLayer(layer_name=name, path=path, item=item, schema=schema or "unknown")
         self.open_layers_list.add_raster_layer(layer)
 
         # Fit to view if first layer; otherwise preserve current zoom
