@@ -1,0 +1,349 @@
+observation_date,value,series,series_name
+1990-01-01,77.12,ATNHPIUS24510A,All-Transactions House Price Index
+1991-01-01,78.89,ATNHPIUS24510A,All-Transactions House Price Index
+1992-01-01,81.41,ATNHPIUS24510A,All-Transactions House Price Index
+1993-01-01,82.38,ATNHPIUS24510A,All-Transactions House Price Index
+1994-01-01,82.13,ATNHPIUS24510A,All-Transactions House Price Index
+1995-01-01,81.05,ATNHPIUS24510A,All-Transactions House Price Index
+1996-01-01,82.63,ATNHPIUS24510A,All-Transactions House Price Index
+1997-01-01,83.43,ATNHPIUS24510A,All-Transactions House Price Index
+1998-01-01,87.45,ATNHPIUS24510A,All-Transactions House Price Index
+1999-01-01,92.12,ATNHPIUS24510A,All-Transactions House Price Index
+2000-01-01,100.0,ATNHPIUS24510A,All-Transactions House Price Index
+2001-01-01,109.89,ATNHPIUS24510A,All-Transactions House Price Index
+2002-01-01,119.76,ATNHPIUS24510A,All-Transactions House Price Index
+2003-01-01,130.16,ATNHPIUS24510A,All-Transactions House Price Index
+2004-01-01,149.4,ATNHPIUS24510A,All-Transactions House Price Index
+2005-01-01,180.79,ATNHPIUS24510A,All-Transactions House Price Index
+2006-01-01,206.43,ATNHPIUS24510A,All-Transactions House Price Index
+2007-01-01,218.62,ATNHPIUS24510A,All-Transactions House Price Index
+2008-01-01,213.1,ATNHPIUS24510A,All-Transactions House Price Index
+2009-01-01,194.48,ATNHPIUS24510A,All-Transactions House Price Index
+2010-01-01,180.71,ATNHPIUS24510A,All-Transactions House Price Index
+2011-01-01,170.41,ATNHPIUS24510A,All-Transactions House Price Index
+2012-01-01,168.03,ATNHPIUS24510A,All-Transactions House Price Index
+2013-01-01,173.75,ATNHPIUS24510A,All-Transactions House Price Index
+2014-01-01,181.05,ATNHPIUS24510A,All-Transactions House Price Index
+2015-01-01,186.12,ATNHPIUS24510A,All-Transactions House Price Index
+2016-01-01,192.46,ATNHPIUS24510A,All-Transactions House Price Index
+2017-01-01,196.65,ATNHPIUS24510A,All-Transactions House Price Index
+2018-01-01,199.56,ATNHPIUS24510A,All-Transactions House Price Index
+2019-01-01,203.8,ATNHPIUS24510A,All-Transactions House Price Index
+2020-01-01,209.4,ATNHPIUS24510A,All-Transactions House Price Index
+2021-01-01,225.78,ATNHPIUS24510A,All-Transactions House Price Index
+2022-01-01,248.03,ATNHPIUS24510A,All-Transactions House Price Index
+2023-01-01,258.86,ATNHPIUS24510A,All-Transactions House Price Index
+2024-01-01,266.74,ATNHPIUS24510A,All-Transactions House Price Index
+2025-01-01,273.74,ATNHPIUS24510A,All-Transactions House Price Index
+2001-01-01,29814418.0,GDPALL24510,Gross Domestic Product: All Industries (Thousands $)
+2002-01-01,30073717.0,GDPALL24510,Gross Domestic Product: All Industries (Thousands $)
+2003-01-01,30523492.0,GDPALL24510,Gross Domestic Product: All Industries (Thousands $)
+2004-01-01,31452389.0,GDPALL24510,Gross Domestic Product: All Industries (Thousands $)
+2005-01-01,33244706.0,GDPALL24510,Gross Domestic Product: All Industries (Thousands $)
+2006-01-01,34480107.0,GDPALL24510,Gross Domestic Product: All Industries (Thousands $)
+2007-01-01,34821802.0,GDPALL24510,Gross Domestic Product: All Industries (Thousands $)
+2008-01-01,35461422.0,GDPALL24510,Gross Domestic Product: All Industries (Thousands $)
+2009-01-01,35934063.0,GDPALL24510,Gross Domestic Product: All Industries (Thousands $)
+2010-01-01,37407897.0,GDPALL24510,Gross Domestic Product: All Industries (Thousands $)
+2011-01-01,38285876.0,GDPALL24510,Gross Domestic Product: All Industries (Thousands $)
+2012-01-01,39516198.0,GDPALL24510,Gross Domestic Product: All Industries (Thousands $)
+2013-01-01,40633467.0,GDPALL24510,Gross Domestic Product: All Industries (Thousands $)
+2014-01-01,42145177.0,GDPALL24510,Gross Domestic Product: All Industries (Thousands $)
+2015-01-01,43871059.0,GDPALL24510,Gross Domestic Product: All Industries (Thousands $)
+2016-01-01,46182253.0,GDPALL24510,Gross Domestic Product: All Industries (Thousands $)
+2017-01-01,47896519.0,GDPALL24510,Gross Domestic Product: All Industries (Thousands $)
+2018-01-01,49279670.0,GDPALL24510,Gross Domestic Product: All Industries (Thousands $)
+2019-01-01,49714441.0,GDPALL24510,Gross Domestic Product: All Industries (Thousands $)
+2020-01-01,49224054.0,GDPALL24510,Gross Domestic Product: All Industries (Thousands $)
+2021-01-01,53508532.0,GDPALL24510,Gross Domestic Product: All Industries (Thousands $)
+2022-01-01,57823589.0,GDPALL24510,Gross Domestic Product: All Industries (Thousands $)
+2023-01-01,61733700.0,GDPALL24510,Gross Domestic Product: All Industries (Thousands $)
+2024-01-01,65578972.0,GDPALL24510,Gross Domestic Product: All Industries (Thousands $)
+2001-01-01,55335278.542232096,GDPALL24510_REAL,Gross Domestic Product: All Industries (Thousands $) (Real 2024$)
+2002-01-01,55316425.8465613,GDPALL24510_REAL,Gross Domestic Product: All Industries (Thousands $) (Real 2024$)
+2003-01-01,54757196.344495334,GDPALL24510_REAL,Gross Domestic Product: All Industries (Thousands $) (Real 2024$)
+2004-01-01,54905946.203806,GDPALL24510_REAL,Gross Domestic Product: All Industries (Thousands $) (Real 2024$)
+2005-01-01,55771729.842233635,GDPALL24510_REAL,Gross Domestic Product: All Industries (Thousands $) (Real 2024$)
+2006-01-01,55351518.03772905,GDPALL24510_REAL,Gross Domestic Product: All Industries (Thousands $) (Real 2024$)
+2007-01-01,53778526.40215736,GDPALL24510_REAL,Gross Domestic Product: All Industries (Thousands $) (Real 2024$)
+2008-01-01,51574252.49009333,GDPALL24510_REAL,Gross Domestic Product: All Industries (Thousands $) (Real 2024$)
+2009-01-01,51855266.39141141,GDPALL24510_REAL,Gross Domestic Product: All Industries (Thousands $) (Real 2024$)
+2010-01-01,53359905.38031428,GDPALL24510_REAL,Gross Domestic Product: All Industries (Thousands $) (Real 2024$)
+2011-01-01,52903985.10594587,GDPALL24510_REAL,Gross Domestic Product: All Industries (Thousands $) (Real 2024$)
+2012-01-01,53519492.72453911,GDPALL24510_REAL,Gross Domestic Product: All Industries (Thousands $) (Real 2024$)
+2013-01-01,54243784.159029074,GDPALL24510_REAL,Gross Domestic Product: All Industries (Thousands $) (Real 2024$)
+2014-01-01,55238616.3670913,GDPALL24510_REAL,Gross Domestic Product: All Industries (Thousands $) (Real 2024$)
+2015-01-01,57381541.199998684,GDPALL24510_REAL,Gross Domestic Product: All Industries (Thousands $) (Real 2024$)
+2016-01-01,59568613.50436796,GDPALL24510_REAL,Gross Domestic Product: All Industries (Thousands $) (Real 2024$)
+2017-01-01,60637049.30709979,GDPALL24510_REAL,Gross Domestic Product: All Industries (Thousands $) (Real 2024$)
+2018-01-01,61217628.82843708,GDPALL24510_REAL,Gross Domestic Product: All Industries (Thousands $) (Real 2024$)
+2019-01-01,60917496.329378136,GDPALL24510_REAL,Gross Domestic Product: All Industries (Thousands $) (Real 2024$)
+2020-01-01,59714774.47590665,GDPALL24510_REAL,Gross Domestic Product: All Industries (Thousands $) (Real 2024$)
+2021-01-01,62334438.666134685,GDPALL24510_REAL,Gross Domestic Product: All Industries (Thousands $) (Real 2024$)
+2022-01-01,61730686.30919495,GDPALL24510_REAL,Gross Domestic Product: All Industries (Thousands $) (Real 2024$)
+2023-01-01,63502338.66196438,GDPALL24510_REAL,Gross Domestic Product: All Industries (Thousands $) (Real 2024$)
+2024-01-01,65578972.0,GDPALL24510_REAL,Gross Domestic Product: All Industries (Thousands $) (Real 2024$)
+1990-01-01,312117.0,LAUCN245100000000005A,Employed Persons
+1991-01-01,303593.0,LAUCN245100000000005A,Employed Persons
+1992-01-01,298849.0,LAUCN245100000000005A,Employed Persons
+1993-01-01,296357.0,LAUCN245100000000005A,Employed Persons
+1994-01-01,291256.0,LAUCN245100000000005A,Employed Persons
+1995-01-01,287332.0,LAUCN245100000000005A,Employed Persons
+1996-01-01,283055.0,LAUCN245100000000005A,Employed Persons
+1997-01-01,279205.0,LAUCN245100000000005A,Employed Persons
+1998-01-01,272468.0,LAUCN245100000000005A,Employed Persons
+1999-01-01,268091.0,LAUCN245100000000005A,Employed Persons
+2000-01-01,263514.0,LAUCN245100000000005A,Employed Persons
+2001-01-01,261433.0,LAUCN245100000000005A,Employed Persons
+2002-01-01,255735.0,LAUCN245100000000005A,Employed Persons
+2003-01-01,255320.0,LAUCN245100000000005A,Employed Persons
+2004-01-01,253658.0,LAUCN245100000000005A,Employed Persons
+2005-01-01,255001.0,LAUCN245100000000005A,Employed Persons
+2006-01-01,259566.0,LAUCN245100000000005A,Employed Persons
+2007-01-01,263730.0,LAUCN245100000000005A,Employed Persons
+2008-01-01,264991.0,LAUCN245100000000005A,Employed Persons
+2009-01-01,255565.0,LAUCN245100000000005A,Employed Persons
+2010-01-01,263211.0,LAUCN245100000000005A,Employed Persons
+2011-01-01,264381.0,LAUCN245100000000005A,Employed Persons
+2012-01-01,268157.0,LAUCN245100000000005A,Employed Persons
+2013-01-01,269372.0,LAUCN245100000000005A,Employed Persons
+2014-01-01,270808.0,LAUCN245100000000005A,Employed Persons
+2015-01-01,273886.0,LAUCN245100000000005A,Employed Persons
+2016-01-01,286094.0,LAUCN245100000000005A,Employed Persons
+2017-01-01,287901.0,LAUCN245100000000005A,Employed Persons
+2018-01-01,286532.0,LAUCN245100000000005A,Employed Persons
+2019-01-01,288329.0,LAUCN245100000000005A,Employed Persons
+2020-01-01,266224.0,LAUCN245100000000005A,Employed Persons
+2021-01-01,261588.0,LAUCN245100000000005A,Employed Persons
+2022-01-01,265827.0,LAUCN245100000000005A,Employed Persons
+2023-01-01,268757.0,LAUCN245100000000005A,Employed Persons
+2024-01-01,271271.0,LAUCN245100000000005A,Employed Persons
+1990-01-01,337841.0,MDBALT5LFN,Civilian Labor Force
+1991-01-01,336392.0,MDBALT5LFN,Civilian Labor Force
+1992-01-01,334722.0,MDBALT5LFN,Civilian Labor Force
+1993-01-01,330004.0,MDBALT5LFN,Civilian Labor Force
+1994-01-01,320309.0,MDBALT5LFN,Civilian Labor Force
+1995-01-01,313158.0,MDBALT5LFN,Civilian Labor Force
+1996-01-01,308871.0,MDBALT5LFN,Civilian Labor Force
+1997-01-01,307289.0,MDBALT5LFN,Civilian Labor Force
+1998-01-01,298108.0,MDBALT5LFN,Civilian Labor Force
+1999-01-01,288522.0,MDBALT5LFN,Civilian Labor Force
+2000-01-01,280104.0,MDBALT5LFN,Civilian Labor Force
+2001-01-01,280387.0,MDBALT5LFN,Civilian Labor Force
+2002-01-01,275376.0,MDBALT5LFN,Civilian Labor Force
+2003-01-01,275609.0,MDBALT5LFN,Civilian Labor Force
+2004-01-01,273591.0,MDBALT5LFN,Civilian Labor Force
+2005-01-01,274072.0,MDBALT5LFN,Civilian Labor Force
+2006-01-01,277168.0,MDBALT5LFN,Civilian Labor Force
+2007-01-01,279064.0,MDBALT5LFN,Civilian Labor Force
+2008-01-01,283770.0,MDBALT5LFN,Civilian Labor Force
+2009-01-01,285196.0,MDBALT5LFN,Civilian Labor Force
+2010-01-01,296834.0,MDBALT5LFN,Civilian Labor Force
+2011-01-01,295823.0,MDBALT5LFN,Civilian Labor Force
+2012-01-01,298049.0,MDBALT5LFN,Civilian Labor Force
+2013-01-01,298182.0,MDBALT5LFN,Civilian Labor Force
+2014-01-01,295703.0,MDBALT5LFN,Civilian Labor Force
+2015-01-01,295986.0,MDBALT5LFN,Civilian Labor Force
+2016-01-01,304462.0,MDBALT5LFN,Civilian Labor Force
+2017-01-01,305578.0,MDBALT5LFN,Civilian Labor Force
+2018-01-01,302620.0,MDBALT5LFN,Civilian Labor Force
+2019-01-01,302371.0,MDBALT5LFN,Civilian Labor Force
+2020-01-01,290141.0,MDBALT5LFN,Civilian Labor Force
+2021-01-01,280279.0,MDBALT5LFN,Civilian Labor Force
+2022-01-01,276318.0,MDBALT5LFN,Civilian Labor Force
+2023-01-01,276824.0,MDBALT5LFN,Civilian Labor Force
+2024-01-01,282716.0,MDBALT5LFN,Civilian Labor Force
+2025-01-01,282148.0,MDBALT5LFN,Civilian Labor Force
+2026-01-01,,MDBALT5LFN,Civilian Labor Force
+1970-01-01,905787.0,MDBALT5POP,Resident Population
+1971-01-01,908100.0,MDBALT5POP,Resident Population
+1972-01-01,899800.0,MDBALT5POP,Resident Population
+1973-01-01,890600.0,MDBALT5POP,Resident Population
+1974-01-01,887500.0,MDBALT5POP,Resident Population
+1975-01-01,860700.0,MDBALT5POP,Resident Population
+1976-01-01,837600.0,MDBALT5POP,Resident Population
+1977-01-01,829800.0,MDBALT5POP,Resident Population
+1978-01-01,815800.0,MDBALT5POP,Resident Population
+1979-01-01,807800.0,MDBALT5POP,Resident Population
+1980-01-01,786741.0,MDBALT5POP,Resident Population
+1981-01-01,782919.0,MDBALT5POP,Resident Population
+1982-01-01,775792.0,MDBALT5POP,Resident Population
+1983-01-01,770430.0,MDBALT5POP,Resident Population
+1984-01-01,767536.0,MDBALT5POP,Resident Population
+1985-01-01,761601.0,MDBALT5POP,Resident Population
+1986-01-01,761416.0,MDBALT5POP,Resident Population
+1987-01-01,751327.0,MDBALT5POP,Resident Population
+1988-01-01,748284.0,MDBALT5POP,Resident Population
+1989-01-01,740697.0,MDBALT5POP,Resident Population
+1990-01-01,735632.0,MDBALT5POP,Resident Population
+1991-01-01,735835.0,MDBALT5POP,Resident Population
+1992-01-01,731227.0,MDBALT5POP,Resident Population
+1993-01-01,723802.0,MDBALT5POP,Resident Population
+1994-01-01,713248.0,MDBALT5POP,Resident Population
+1995-01-01,701685.0,MDBALT5POP,Resident Population
+1996-01-01,688542.0,MDBALT5POP,Resident Population
+1997-01-01,677342.0,MDBALT5POP,Resident Population
+1998-01-01,667479.0,MDBALT5POP,Resident Population
+1999-01-01,657441.0,MDBALT5POP,Resident Population
+2000-01-01,648746.0,MDBALT5POP,Resident Population
+2001-01-01,645253.0,MDBALT5POP,Resident Population
+2002-01-01,642514.0,MDBALT5POP,Resident Population
+2003-01-01,642324.0,MDBALT5POP,Resident Population
+2004-01-01,641004.0,MDBALT5POP,Resident Population
+2005-01-01,640064.0,MDBALT5POP,Resident Population
+2006-01-01,640961.0,MDBALT5POP,Resident Population
+2007-01-01,640150.0,MDBALT5POP,Resident Population
+2008-01-01,637901.0,MDBALT5POP,Resident Population
+2009-01-01,636128.0,MDBALT5POP,Resident Population
+2010-01-01,620942.0,MDBALT5POP,Resident Population
+2011-01-01,620493.0,MDBALT5POP,Resident Population
+2012-01-01,623035.0,MDBALT5POP,Resident Population
+2013-01-01,622591.0,MDBALT5POP,Resident Population
+2014-01-01,623833.0,MDBALT5POP,Resident Population
+2015-01-01,622831.0,MDBALT5POP,Resident Population
+2016-01-01,616542.0,MDBALT5POP,Resident Population
+2017-01-01,610853.0,MDBALT5POP,Resident Population
+2018-01-01,603241.0,MDBALT5POP,Resident Population
+2019-01-01,594601.0,MDBALT5POP,Resident Population
+2020-01-01,583295.0,MDBALT5POP,Resident Population
+2021-01-01,576503.0,MDBALT5POP,Resident Population
+2022-01-01,570475.0,MDBALT5POP,Resident Population
+2023-01-01,567952.0,MDBALT5POP,Resident Population
+2024-01-01,570053.0,MDBALT5POP,Resident Population
+2025-01-01,569997.0,MDBALT5POP,Resident Population
+1990-01-01,7.6,MDBALT5URN,Unemployment Rate (%)
+1991-01-01,9.8,MDBALT5URN,Unemployment Rate (%)
+1992-01-01,10.7,MDBALT5URN,Unemployment Rate (%)
+1993-01-01,10.2,MDBALT5URN,Unemployment Rate (%)
+1994-01-01,9.1,MDBALT5URN,Unemployment Rate (%)
+1995-01-01,8.3,MDBALT5URN,Unemployment Rate (%)
+1996-01-01,8.4,MDBALT5URN,Unemployment Rate (%)
+1997-01-01,9.1,MDBALT5URN,Unemployment Rate (%)
+1998-01-01,8.6,MDBALT5URN,Unemployment Rate (%)
+1999-01-01,7.1,MDBALT5URN,Unemployment Rate (%)
+2000-01-01,5.9,MDBALT5URN,Unemployment Rate (%)
+2001-01-01,6.8,MDBALT5URN,Unemployment Rate (%)
+2002-01-01,7.1,MDBALT5URN,Unemployment Rate (%)
+2003-01-01,7.4,MDBALT5URN,Unemployment Rate (%)
+2004-01-01,7.3,MDBALT5URN,Unemployment Rate (%)
+2005-01-01,7.0,MDBALT5URN,Unemployment Rate (%)
+2006-01-01,6.4,MDBALT5URN,Unemployment Rate (%)
+2007-01-01,5.5,MDBALT5URN,Unemployment Rate (%)
+2008-01-01,6.6,MDBALT5URN,Unemployment Rate (%)
+2009-01-01,10.4,MDBALT5URN,Unemployment Rate (%)
+2010-01-01,11.3,MDBALT5URN,Unemployment Rate (%)
+2011-01-01,10.6,MDBALT5URN,Unemployment Rate (%)
+2012-01-01,10.0,MDBALT5URN,Unemployment Rate (%)
+2013-01-01,9.7,MDBALT5URN,Unemployment Rate (%)
+2014-01-01,8.4,MDBALT5URN,Unemployment Rate (%)
+2015-01-01,7.5,MDBALT5URN,Unemployment Rate (%)
+2016-01-01,6.0,MDBALT5URN,Unemployment Rate (%)
+2017-01-01,5.8,MDBALT5URN,Unemployment Rate (%)
+2018-01-01,5.3,MDBALT5URN,Unemployment Rate (%)
+2019-01-01,4.6,MDBALT5URN,Unemployment Rate (%)
+2020-01-01,8.3,MDBALT5URN,Unemployment Rate (%)
+2021-01-01,6.7,MDBALT5URN,Unemployment Rate (%)
+2022-01-01,3.8,MDBALT5URN,Unemployment Rate (%)
+2023-01-01,2.9,MDBALT5URN,Unemployment Rate (%)
+2024-01-01,4.0,MDBALT5URN,Unemployment Rate (%)
+2025-01-01,4.8,MDBALT5URN,Unemployment Rate (%)
+2026-01-01,,MDBALT5URN,Unemployment Rate (%)
+1993-01-01,25466.0,MHIMD24510A052NCEN,Median Household Income (Nominal $)
+1994-01-01,,MHIMD24510A052NCEN,Median Household Income (Nominal $)
+1995-01-01,25918.0,MHIMD24510A052NCEN,Median Household Income (Nominal $)
+1996-01-01,,MHIMD24510A052NCEN,Median Household Income (Nominal $)
+1997-01-01,27713.0,MHIMD24510A052NCEN,Median Household Income (Nominal $)
+1998-01-01,28398.0,MHIMD24510A052NCEN,Median Household Income (Nominal $)
+1999-01-01,28581.0,MHIMD24510A052NCEN,Median Household Income (Nominal $)
+2000-01-01,29460.0,MHIMD24510A052NCEN,Median Household Income (Nominal $)
+2001-01-01,28510.0,MHIMD24510A052NCEN,Median Household Income (Nominal $)
+2002-01-01,28164.0,MHIMD24510A052NCEN,Median Household Income (Nominal $)
+2003-01-01,29162.0,MHIMD24510A052NCEN,Median Household Income (Nominal $)
+2004-01-01,29792.0,MHIMD24510A052NCEN,Median Household Income (Nominal $)
+2005-01-01,32453.0,MHIMD24510A052NCEN,Median Household Income (Nominal $)
+2006-01-01,35834.0,MHIMD24510A052NCEN,Median Household Income (Nominal $)
+2007-01-01,36894.0,MHIMD24510A052NCEN,Median Household Income (Nominal $)
+2008-01-01,40087.0,MHIMD24510A052NCEN,Median Household Income (Nominal $)
+2009-01-01,38458.0,MHIMD24510A052NCEN,Median Household Income (Nominal $)
+2010-01-01,38186.0,MHIMD24510A052NCEN,Median Household Income (Nominal $)
+2011-01-01,38478.0,MHIMD24510A052NCEN,Median Household Income (Nominal $)
+2012-01-01,39077.0,MHIMD24510A052NCEN,Median Household Income (Nominal $)
+2013-01-01,41988.0,MHIMD24510A052NCEN,Median Household Income (Nominal $)
+2014-01-01,41895.0,MHIMD24510A052NCEN,Median Household Income (Nominal $)
+2015-01-01,43192.0,MHIMD24510A052NCEN,Median Household Income (Nominal $)
+2016-01-01,46604.0,MHIMD24510A052NCEN,Median Household Income (Nominal $)
+2017-01-01,46762.0,MHIMD24510A052NCEN,Median Household Income (Nominal $)
+2018-01-01,50501.0,MHIMD24510A052NCEN,Median Household Income (Nominal $)
+2019-01-01,49780.0,MHIMD24510A052NCEN,Median Household Income (Nominal $)
+2020-01-01,51485.0,MHIMD24510A052NCEN,Median Household Income (Nominal $)
+2021-01-01,54068.0,MHIMD24510A052NCEN,Median Household Income (Nominal $)
+2022-01-01,54735.0,MHIMD24510A052NCEN,Median Household Income (Nominal $)
+2023-01-01,58616.0,MHIMD24510A052NCEN,Median Household Income (Nominal $)
+2024-01-01,63451.0,MHIMD24510A052NCEN,Median Household Income (Nominal $)
+1993-01-01,,MHIMD24510A052NCEN_REAL,Median Household Income (Nominal $) (Real 2024$)
+1994-01-01,,MHIMD24510A052NCEN_REAL,Median Household Income (Nominal $) (Real 2024$)
+1995-01-01,,MHIMD24510A052NCEN_REAL,Median Household Income (Nominal $) (Real 2024$)
+1996-01-01,,MHIMD24510A052NCEN_REAL,Median Household Income (Nominal $) (Real 2024$)
+1997-01-01,,MHIMD24510A052NCEN_REAL,Median Household Income (Nominal $) (Real 2024$)
+1998-01-01,,MHIMD24510A052NCEN_REAL,Median Household Income (Nominal $) (Real 2024$)
+1999-01-01,,MHIMD24510A052NCEN_REAL,Median Household Income (Nominal $) (Real 2024$)
+2000-01-01,55902.54773375474,MHIMD24510A052NCEN_REAL,Median Household Income (Nominal $) (Real 2024$)
+2001-01-01,52914.291039960495,MHIMD24510A052NCEN_REAL,Median Household Income (Nominal $) (Real 2024$)
+2002-01-01,51803.76664256542,MHIMD24510A052NCEN_REAL,Median Household Income (Nominal $) (Real 2024$)
+2003-01-01,52314.766600039504,MHIMD24510A052NCEN_REAL,Median Household Income (Nominal $) (Real 2024$)
+2004-01-01,52007.430955524185,MHIMD24510A052NCEN_REAL,Median Household Income (Nominal $) (Real 2024$)
+2005-01-01,54443.55406752606,MHIMD24510A052NCEN_REAL,Median Household Income (Nominal $) (Real 2024$)
+2006-01-01,57524.94611933724,MHIMD24510A052NCEN_REAL,Median Household Income (Nominal $) (Real 2024$)
+2007-01-01,56978.813246976526,MHIMD24510A052NCEN_REAL,Median Household Income (Nominal $) (Real 2024$)
+2008-01-01,58301.583607402186,MHIMD24510A052NCEN_REAL,Median Household Income (Nominal $) (Real 2024$)
+2009-01-01,55497.47700060802,MHIMD24510A052NCEN_REAL,Median Household Income (Nominal $) (Real 2024$)
+2010-01-01,54469.818147026046,MHIMD24510A052NCEN_REAL,Median Household Income (Nominal $) (Real 2024$)
+2011-01-01,53169.464867581584,MHIMD24510A052NCEN_REAL,Median Household Income (Nominal $) (Real 2024$)
+2012-01-01,52924.65680015104,MHIMD24510A052NCEN_REAL,Median Household Income (Nominal $) (Real 2024$)
+2013-01-01,56052.02256724274,MHIMD24510A052NCEN_REAL,Median Household Income (Nominal $) (Real 2024$)
+2014-01-01,54910.7157077378,MHIMD24510A052NCEN_REAL,Median Household Income (Nominal $) (Real 2024$)
+2015-01-01,56493.35995081275,MHIMD24510A052NCEN_REAL,Median Household Income (Nominal $) (Real 2024$)
+2016-01-01,60112.607840019504,MHIMD24510A052NCEN_REAL,Median Household Income (Nominal $) (Real 2024$)
+2017-01-01,59200.74692063948,MHIMD24510A052NCEN_REAL,Median Household Income (Nominal $) (Real 2024$)
+2018-01-01,62734.82499913049,MHIMD24510A052NCEN_REAL,Median Household Income (Nominal $) (Real 2024$)
+2019-01-01,60997.82892613524,MHIMD24510A052NCEN_REAL,Median Household Income (Nominal $) (Real 2024$)
+2020-01-01,62457.577425298085,MHIMD24510A052NCEN_REAL,Median Household Income (Nominal $) (Real 2024$)
+2021-01-01,62986.1875074534,MHIMD24510A052NCEN_REAL,Median Household Income (Nominal $) (Real 2024$)
+2022-01-01,58433.40362587638,MHIMD24510A052NCEN_REAL,Median Household Income (Nominal $) (Real 2024$)
+2023-01-01,60295.3181651141,MHIMD24510A052NCEN_REAL,Median Household Income (Nominal $) (Real 2024$)
+2024-01-01,63451.0,MHIMD24510A052NCEN_REAL,Median Household Income (Nominal $) (Real 2024$)
+1990-01-01,458.7,SMS24925810000000001,Total Nonfarm Employment (Thousands)
+1991-01-01,427.2,SMS24925810000000001,Total Nonfarm Employment (Thousands)
+1992-01-01,415.6,SMS24925810000000001,Total Nonfarm Employment (Thousands)
+1993-01-01,410.4,SMS24925810000000001,Total Nonfarm Employment (Thousands)
+1994-01-01,405.2,SMS24925810000000001,Total Nonfarm Employment (Thousands)
+1995-01-01,401.2,SMS24925810000000001,Total Nonfarm Employment (Thousands)
+1996-01-01,396.6,SMS24925810000000001,Total Nonfarm Employment (Thousands)
+1997-01-01,397.3,SMS24925810000000001,Total Nonfarm Employment (Thousands)
+1998-01-01,396.4,SMS24925810000000001,Total Nonfarm Employment (Thousands)
+1999-01-01,404.2,SMS24925810000000001,Total Nonfarm Employment (Thousands)
+2000-01-01,405.6,SMS24925810000000001,Total Nonfarm Employment (Thousands)
+2001-01-01,394.1,SMS24925810000000001,Total Nonfarm Employment (Thousands)
+2002-01-01,386.9,SMS24925810000000001,Total Nonfarm Employment (Thousands)
+2003-01-01,380.1,SMS24925810000000001,Total Nonfarm Employment (Thousands)
+2004-01-01,370.9,SMS24925810000000001,Total Nonfarm Employment (Thousands)
+2005-01-01,368.2,SMS24925810000000001,Total Nonfarm Employment (Thousands)
+2006-01-01,363.9,SMS24925810000000001,Total Nonfarm Employment (Thousands)
+2007-01-01,361.9,SMS24925810000000001,Total Nonfarm Employment (Thousands)
+2008-01-01,358.5,SMS24925810000000001,Total Nonfarm Employment (Thousands)
+2009-01-01,347.9,SMS24925810000000001,Total Nonfarm Employment (Thousands)
+2010-01-01,347.5,SMS24925810000000001,Total Nonfarm Employment (Thousands)
+2011-01-01,351.1,SMS24925810000000001,Total Nonfarm Employment (Thousands)
+2012-01-01,357.1,SMS24925810000000001,Total Nonfarm Employment (Thousands)
+2013-01-01,359.9,SMS24925810000000001,Total Nonfarm Employment (Thousands)
+2014-01-01,359.4,SMS24925810000000001,Total Nonfarm Employment (Thousands)
+2015-01-01,362.9,SMS24925810000000001,Total Nonfarm Employment (Thousands)
+2016-01-01,367.0,SMS24925810000000001,Total Nonfarm Employment (Thousands)
+2017-01-01,371.7,SMS24925810000000001,Total Nonfarm Employment (Thousands)
+2018-01-01,376.0,SMS24925810000000001,Total Nonfarm Employment (Thousands)
+2019-01-01,375.4,SMS24925810000000001,Total Nonfarm Employment (Thousands)
+2020-01-01,356.4,SMS24925810000000001,Total Nonfarm Employment (Thousands)
+2021-01-01,362.8,SMS24925810000000001,Total Nonfarm Employment (Thousands)
+2022-01-01,371.0,SMS24925810000000001,Total Nonfarm Employment (Thousands)
+2023-01-01,372.5,SMS24925810000000001,Total Nonfarm Employment (Thousands)
+2024-01-01,378.5,SMS24925810000000001,Total Nonfarm Employment (Thousands)
