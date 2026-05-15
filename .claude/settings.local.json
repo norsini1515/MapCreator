@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\nicho\\\\Documents\\\\World Building\\\\MapCreator\" -Force)",
+      "Bash(Select-Object Name, FullName)",
+      "Bash(Format-List)"
+    ]
+  }
+}

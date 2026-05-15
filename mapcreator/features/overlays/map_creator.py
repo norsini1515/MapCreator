@@ -39,7 +39,7 @@ from PySide6.QtWidgets import (
 from mapcreator import directories as _dirs
 from mapcreator.features.overlays.layer_view import LayerView
 from mapcreator.features.overlays.open_layers_list import OpenLayersList, RasterLayer
-from mapcreator.features.overlays.palette_controls import PaletteButton, PaletteClass
+from mapcreator.features.overlays.palette_controls import PaletteControls
 
 from mapcreator.globals.config_models import read_config_file
 from mapcreator.globals.logutil import info, process_step, error, setting_config, success, warn
@@ -142,6 +142,8 @@ class MapCreator:
         self.layer_control_dock: Optional[QDockWidget] = None
         self.open_layers_dock: Optional[QDockWidget] = None
 
+        self.palette_controls: Optional[PaletteControls] = None
+
         self.class_cfg = class_cfg or read_config_file(None, kind="class_configs")
 
         self._build_ui()
@@ -232,12 +234,16 @@ class MapCreator:
             self.window.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.open_layers_dock)
             self.window.splitDockWidget(self.layer_control_dock, self.open_layers_dock, Qt.Orientation.Vertical)
 
+        self.palette_controls = PaletteControls(main_window=self.window)
+
     def _wire_events(self) -> None:
         """Connect UI actions/signals to handlers."""
         assert self.action_new_raster is not None
         assert self.open_layers_list is not None
 
         self.action_new_raster.triggered.connect(self.new_layer_flow)
+
+        self.open_layers_list.layerSchemaChanged.connect(self._on_layer_schema_changed)
 
         # Toggle for the Layers dock (View -> Dockables -> Layer List)
         if self.action_layer_list is not None and self.open_layers_dock is not None:
@@ -246,6 +252,14 @@ class MapCreator:
 
             self.action_layer_list.toggled.connect(self.open_layers_dock.setVisible)
             self.open_layers_dock.visibilityChanged.connect(self.action_layer_list.setChecked)
+
+    def _on_layer_schema_changed(self, schema: str) -> None:
+        if self.palette_controls is None:
+            return
+        defines = self.class_cfg.registry.defines.get(schema, {})
+        raw = {class_id: {"name": cd.name, "color": cd.color} for class_id, cd in defines.items()}
+        self.palette_controls.set_palette_defines(raw)
+        self.palette_controls.set_schema_label(schema)
 
     # -----------------------------
     # Public run loop

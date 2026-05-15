@@ -5,7 +5,7 @@ from typing import Any
 
 from PySide6.QtCore import QObject, Signal, Qt
 from PySide6.QtWidgets import (
-    QWidget, QDockWidget, QGridLayout, QPushButton, QScrollArea
+    QWidget, QDockWidget, QGridLayout, QPushButton, QScrollArea, QLabel, QVBoxLayout
 )
 
 @dataclass(frozen=True)
@@ -22,28 +22,29 @@ def _clear_layout(layout: QGridLayout) -> None:
             w.deleteLater()
 
 class PaletteButton(QPushButton):
-    """A swatch-like button for selecting a class (id/color/name)."""
+    """A swatch button for selecting a class — color background, name as tooltip."""
 
     def __init__(self, *, class_id: int, name: str, color_hex: str, parent: QWidget | None = None):
-        super().__init__(name, parent)
+        super().__init__("", parent)
         self.class_id = class_id
         self.color_hex = color_hex
 
+        self.setToolTip(name)
         self.setCheckable(True)
-        self.setMinimumHeight(28)
+        self.setFixedSize(36, 36)
         self.setCursor(Qt.PointingHandCursor)
 
-        # Simple swatch style
         self.setStyleSheet(f"""
             QPushButton {{
                 background-color: {color_hex};
                 border: 1px solid rgba(0,0,0,0.35);
-                border-radius: 6px;
-                padding: 6px 10px;
-                text-align: left;
+                border-radius: 4px;
+            }}
+            QPushButton:hover {{
+                border: 2px solid rgba(0,0,0,0.5);
             }}
             QPushButton:checked {{
-                border: 2px solid rgba(0,0,0,0.75);
+                border: 3px solid rgba(0,0,0,0.8);
             }}
         """)
 
@@ -65,25 +66,35 @@ class PaletteControls(QObject):
 
         self._dock: QDockWidget = self._must_find(main_window, QDockWidget, "layer_palette_controls_dock")
         self._scroll: QScrollArea = self._must_find(self._dock, QScrollArea, "scrollArea")
-        self._buttons_widget: QWidget = self._must_find(self._dock, QWidget, "paletteButtonsWidget")
+        self._schema_label: QLabel = self._must_find(self._dock, QLabel, "active_palette_label")
 
+        # In the .ui file the QGridLayout lives on gridLayoutWidget (a child of
+        # paletteButtonsWidget), not on paletteButtonsWidget itself.
+        # gridLayoutWidget also has a hardcoded negative offset geometry (-11, -1)
+        # that causes edge buttons to be clipped by the scroll area. Fix by wrapping
+        # it in a proper layout on paletteButtonsWidget so it fills the container.
+        self._buttons_widget: QWidget = self._must_find(self._dock, QWidget, "gridLayoutWidget")
         layout = self._buttons_widget.layout()
         if not isinstance(layout, QGridLayout):
             raise RuntimeError(
-                "paletteButtonsWidget must have a QGridLayout named 'paletteButtonsGrid'. "
+                "gridLayoutWidget must have a QGridLayout. "
                 f"Found: {type(layout).__name__ if layout else None}"
             )
         self._grid: QGridLayout = layout
 
+        palette_container: QWidget = self._must_find(self._dock, QWidget, "paletteButtonsWidget")
+        if palette_container.layout() is None:
+            wrap = QVBoxLayout(palette_container)
+            wrap.setContentsMargins(2, 2, 2, 2)
+            wrap.setSpacing(0)
+            wrap.addWidget(self._buttons_widget)
+
         self._selected_button: PaletteButton | None = None
         self.selected_class_id: int | None = None
 
-        # Nice defaults for packing
         self._grid.setAlignment(Qt.AlignTop)
-        self._grid.setHorizontalSpacing(8)
-        self._grid.setVerticalSpacing(8)
-
-        # Ensure scroll area behaves
+        self._grid.setHorizontalSpacing(6)
+        self._grid.setVerticalSpacing(6)
         self._scroll.setWidgetResizable(True)
 
     @staticmethod
@@ -93,7 +104,7 @@ class PaletteControls(QObject):
             raise RuntimeError(f"Could not find {cls.__name__} with objectName='{name}'")
         return w
 
-    def set_palette_defines(self, defines: dict[Any, dict[str, Any]], *, columns: int = 2) -> None:
+    def set_palette_defines(self, defines: dict[Any, dict[str, Any]], *, columns: int = 6) -> None:
         """
         Build palette buttons from a defines mapping like:
             {0: {name: 'Waterbody', color: '#8BBBEB'}, 1: {...}, -1: {...}}
@@ -130,6 +141,9 @@ class PaletteControls(QObject):
             if isinstance(first_btn, PaletteButton):
                 first_btn.setChecked(True)
                 self._set_selected(first_btn)
+
+    def set_schema_label(self, schema: str) -> None:
+        self._schema_label.setText(f"Active Palette: {schema.capitalize()}")
 
     def _on_button_clicked(self, btn: PaletteButton) -> None:
         self._set_selected(btn)
