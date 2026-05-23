@@ -13,20 +13,24 @@ Responsibilities:
 
 from __future__ import annotations
 
+import math
 from pathlib import Path
 from typing import Optional, Iterable
 from typing import cast
 
 from PySide6.QtUiTools import QUiLoader
-from PySide6.QtCore import QFile, Qt, QIODevice
-from PySide6.QtGui import QAction, QImage, QPixmap
+from PySide6.QtCore import QFile, Qt, QIODevice, QPointF, QRect, QSize
+from PySide6.QtGui import QAction, QBrush, QColor, QImage, QPainter, QPixmap, QRegion
 from PySide6.QtWidgets import (
     QApplication,
     QDockWidget,
     QFileDialog,
+    QWidget,
     QGraphicsScene,
     QGraphicsPixmapItem,
     QMainWindow,
+    QStyle,
+    QToolBar,
     QVBoxLayout,
     QComboBox,
     QDialog,
@@ -144,6 +148,18 @@ class MapCreator:
 
         self.palette_controls: Optional[PaletteControls] = None
 
+        # Active brush state
+        self._active_schema: Optional[str] = None
+        self._active_class_id: Optional[int] = None
+        self._active_class_color: Optional[str] = None
+        self._active_class_name: Optional[str] = None
+
+        # Paint layer state
+        self._paint_image: Optional[QImage] = None
+        self._paint_item: Optional[QGraphicsPixmapItem] = None
+        self._paint_origin: QPointF = QPointF(0, 0)
+        self._paint_layer_counts: dict[str, int] = {}
+
         self.class_cfg = class_cfg or read_config_file(None, kind="class_configs")
 
         self._build_ui()
@@ -236,6 +252,21 @@ class MapCreator:
 
         self.palette_controls = PaletteControls(main_window=self.window)
 
+        # Layers-panel toolbar — lives inside OpenLayersListDock, below the list
+        layers_toolbar = QToolBar("Layer Tools")
+        layers_toolbar.setMovable(False)
+        layers_toolbar.setFloatable(False)
+        layers_toolbar.setIconSize(QSize(18, 18))
+
+        style = QApplication.style()
+        new_mask_icon = style.standardIcon(QStyle.StandardPixmap.SP_FileDialogNewFolder)
+        self.action_new_layer_mask = layers_toolbar.addAction(new_mask_icon, "")
+        self.action_new_layer_mask.setToolTip("New Layer Mask")
+
+        dock_contents = self.window.findChild(QWidget, "dockWidgetContents_Layers")
+        if dock_contents is not None and dock_contents.layout() is not None:
+            dock_contents.layout().addWidget(layers_toolbar)
+
     def _wire_events(self) -> None:
         """Connect UI actions/signals to handlers."""
         assert self.action_new_raster is not None
@@ -244,6 +275,15 @@ class MapCreator:
         self.action_new_raster.triggered.connect(self.new_layer_flow)
 
         self.open_layers_list.layerSchemaChanged.connect(self._on_layer_schema_changed)
+        self.open_layers_list.layerSelected.connect(self._sync_paint_target)
+        self.open_layers_list.layerRenamed.connect(self._update_apply_reference_layers)
+        self.palette_controls.classSelected.connect(self._on_class_selected)
+        self.palette_controls.brushCleared.connect(self._on_brush_cleared)
+        self.palette_controls.brushSettingsChanged.connect(self.map_view.set_brush)
+        self.map_view.paintStroke.connect(self._on_paint_stroke)
+        self.action_new_layer_mask.triggered.connect(self._new_layer_mask)
+
+        self.map_view.set_brush(self.palette_controls.brush_size, self.palette_controls.brush_shape)
 
         # Toggle for the Layers dock (View -> Dockables -> Layer List)
         if self.action_layer_list is not None and self.open_layers_dock is not None:
@@ -254,12 +294,212 @@ class MapCreator:
             self.open_layers_dock.visibilityChanged.connect(self.action_layer_list.setChecked)
 
     def _on_layer_schema_changed(self, schema: str) -> None:
+        if schema == self._active_schema:
+            return  # same schema — palette already correct, don't reset brush
+        self._active_schema = schema
+        self._on_brush_cleared()
+
         if self.palette_controls is None:
             return
         defines = self.class_cfg.registry.defines.get(schema, {})
         raw = {class_id: {"name": cd.name, "color": cd.color} for class_id, cd in defines.items()}
         self.palette_controls.set_palette_defines(raw)
         self.palette_controls.set_schema_label(schema)
+
+    def _sync_paint_target(self, row: int) -> None:
+        """Point _paint_image/_paint_item at the currently selected layer."""
+        layers = self.open_layers_list.raster_layers
+        if row < 0 or row >= len(layers):
+            self._paint_image = None
+            self._paint_item = None
+            return
+        item = layers[row].item
+        self._paint_item = item
+        self._paint_origin = item.pos()
+        self._paint_image = item.pixmap().toImage().convertToFormat(QImage.Format.Format_ARGB32)
+
+    def _on_class_selected(self, class_id: int) -> None:
+        if self._active_schema is None:
+            return
+        try:
+            class_def = self.class_cfg.registry.get(self._active_schema, class_id)
+        except KeyError:
+            return
+        self._active_class_id = class_id
+        self._active_class_color = class_def.color
+        self._active_class_name = class_def.name
+        assert self.map_view is not None
+        self.map_view.set_paint_mode(True)
+
+    def _on_brush_cleared(self) -> None:
+        self._active_class_id = None
+        self._active_class_color = None
+        self._active_class_name = None
+        if self.map_view is not None:
+            is_eraser = self.palette_controls is not None and self.palette_controls.is_eraser
+            if not is_eraser:
+                self.map_view.set_paint_mode(False)
+
+    def _build_apply_clip(self, cx: int, cy: int, r: int, shape: str) -> QRegion | None:
+        """
+        Return a QRegion covering only the pixels in the brush footprint that are NOT
+        protected by the Apply filter.  Returns None when no filter is active (paint freely).
+        """
+        if self.palette_controls is None or self.open_layers_list is None:
+            return None
+        disabled = self.palette_controls.get_disabled_classes()
+        if not disabled:
+            return None
+        ref_name = self.palette_controls.get_reference_layer_name()
+        if not ref_name:
+            return None
+        ref_layer = next(
+            (l for l in self.open_layers_list.raster_layers if l.layer_name == ref_name),
+            None,
+        )
+        if ref_layer is None:
+            return None
+
+        ref_img = ref_layer.item.pixmap().toImage().convertToFormat(QImage.Format.Format_ARGB32)
+        ref_origin = ref_layer.item.pos()
+        # Offset from paint-image coords → ref-image coords
+        ref_dx = int(self._paint_origin.x() - ref_origin.x())
+        ref_dy = int(self._paint_origin.y() - ref_origin.y())
+        ref_w, ref_h = ref_img.width(), ref_img.height()
+
+        # Pre-build list of protected (r, g, b) tuples for fast comparison
+        protected: list[tuple[int, int, int]] = []
+        defines = self.class_cfg.registry.defines.get(ref_layer.schema, {})
+        for class_id, class_def in defines.items():
+            if int(class_id) in disabled:
+                c = QColor(class_def.color)
+                protected.append((c.red(), c.green(), c.blue()))
+        if not protected:
+            return None
+
+        TOL = 12
+        region = QRegion()
+
+        for dy in range(-r, r + 1):
+            py = cy + dy
+            x_half = int(math.sqrt(max(0.0, r * r - dy * dy))) if shape != "Square" else r
+
+            run_start: int | None = None
+            # +2 sentinel forces any open run to close at the right edge
+            for dx in range(-x_half, x_half + 2):
+                px = cx + dx
+                is_sentinel = dx == x_half + 1
+
+                if is_sentinel:
+                    allowed = False
+                else:
+                    rx, ry = px + ref_dx, py + ref_dy
+                    if rx < 0 or ry < 0 or rx >= ref_w or ry >= ref_h:
+                        allowed = True
+                    else:
+                        s = QColor(ref_img.pixel(rx, ry))
+                        if s.alpha() < 64:
+                            allowed = True  # transparent pixel → no class color here
+                        else:
+                            sr, sg, sb = s.red(), s.green(), s.blue()
+                            allowed = not any(
+                                abs(sr - pr) < TOL and abs(sg - pg) < TOL and abs(sb - pb) < TOL
+                                for pr, pg, pb in protected
+                            )
+
+                if allowed and run_start is None:
+                    run_start = px
+                elif not allowed and run_start is not None:
+                    region = region.united(QRegion(QRect(run_start, py, px - run_start, 1)))
+                    run_start = None
+
+        return region  # may be empty (all blocked) — caller must handle
+
+    def _update_apply_reference_layers(self) -> None:
+        if self.palette_controls is None or self.open_layers_list is None:
+            return
+        names = [l.layer_name for l in self.open_layers_list.raster_layers]
+        self.palette_controls.update_reference_layers(names)
+
+    def _on_paint_stroke(self, pos: QPointF) -> None:
+        if self._paint_image is None:
+            return
+
+        is_eraser = self.palette_controls is not None and self.palette_controls.is_eraser
+        if not is_eraser and self._active_class_color is None:
+            return
+
+        r = self.palette_controls.brush_size if self.palette_controls else 8
+        shape = self.palette_controls.brush_shape if self.palette_controls else "Circle"
+
+        img_x = int(pos.x() - self._paint_origin.x())
+        img_y = int(pos.y() - self._paint_origin.y())
+
+        clip = self._build_apply_clip(img_x, img_y, r, shape)
+
+        painter = QPainter(self._paint_image)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setPen(Qt.PenStyle.NoPen)
+
+        if clip is not None:
+            if clip.isEmpty():
+                return  # entire brush footprint is protected
+            painter.setClipRegion(clip)
+
+        if is_eraser:
+            painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Clear)
+            painter.setBrush(QBrush(QColor(0, 0, 0, 255)))
+        else:
+            painter.setBrush(QBrush(QColor(self._active_class_color)))
+
+        if shape == "Square":
+            painter.drawRect(img_x - r, img_y - r, r * 2, r * 2)
+        else:
+            painter.drawEllipse(img_x - r, img_y - r, r * 2, r * 2)
+
+        painter.end()
+
+        assert self._paint_item is not None
+        self._paint_item.setPixmap(QPixmap.fromImage(self._paint_image))
+
+    def _new_layer_mask(self) -> None:
+        if self.scene is None or self.map_view is None or self.open_layers_list is None:
+            return
+
+        schema = self._active_schema or "unknown"
+        name_base = self._active_class_name or self._active_schema or "Paint"
+        count = self._paint_layer_counts.get(name_base, 0) + 1
+        self._paint_layer_counts[name_base] = count
+
+        existing = self.scene.itemsBoundingRect()
+        if existing.isNull():
+            vp = self.map_view.viewport()
+            w, h = vp.width(), vp.height()
+            origin = self.map_view.mapToScene(0, 0)
+        else:
+            w, h = int(existing.width()), int(existing.height())
+            origin = existing.topLeft()
+
+        blank = QImage(w, h, QImage.Format.Format_ARGB32)
+        blank.fill(Qt.GlobalColor.transparent)
+
+        item = QGraphicsPixmapItem(QPixmap.fromImage(blank))
+        item.setPos(origin)
+        item.setZValue(999)
+        self.scene.addItem(item)
+
+        layer_name = f"New {name_base} Layer {count}"
+        layer = RasterLayer(
+            layer_name=layer_name,
+            schema=schema,
+            path=Path(layer_name),
+            item=item,
+        )
+        # add_raster_layer auto-selects the new row, which fires layerSelected →
+        # _sync_paint_target, so _paint_image/_paint_item are set for us.
+        self.open_layers_list.add_raster_layer(layer)
+        self._update_apply_reference_layers()
+        self._status(f"Created mask layer: {layer_name}")
 
     # -----------------------------
     # Public run loop
@@ -346,6 +586,7 @@ class MapCreator:
 
         layer = RasterLayer(layer_name=name, path=path, item=item, schema=schema or "unknown")
         self.open_layers_list.add_raster_layer(layer)
+        self._update_apply_reference_layers()
 
         # Fit to view if first layer; otherwise preserve current zoom
         if len(self.open_layers_list.raster_layers) == 1:

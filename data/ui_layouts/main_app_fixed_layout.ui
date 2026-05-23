@@ -73,6 +73,9 @@
    </layout>
   </widget>
   <widget class="QDockWidget" name="layer_palette_controls_dock">
+   <property name="windowTitle">
+    <string>Palette Controls</string>
+   </property>
    <property name="styleSheet">
     <string notr="true"/>
    </property>
@@ -131,6 +134,25 @@
         </layout>
        </item>
        <item>
+        <widget class="QLabel" name="active_brush_label">
+         <property name="sizePolicy">
+          <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
+           <horstretch>0</horstretch>
+           <verstretch>0</verstretch>
+          </sizepolicy>
+         </property>
+         <property name="minimumSize">
+          <size>
+           <width>0</width>
+           <height>22</height>
+          </size>
+         </property>
+         <property name="text">
+          <string>Brush: None</string>
+         </property>
+        </widget>
+       </item>
+       <item>
         <widget class="QScrollArea" name="scrollArea">
          <property name="widgetResizable">
           <bool>true</bool>
@@ -162,6 +184,136 @@
            <layout class="QGridLayout" name="paletteButtonsGrid"/>
           </widget>
          </widget>
+        </widget>
+       </item>
+       <item>
+        <widget class="QFrame" name="brushToolsFrame">
+         <property name="frameShape">
+          <enum>QFrame::Shape::StyledPanel</enum>
+         </property>
+         <property name="frameShadow">
+          <enum>QFrame::Shadow::Raised</enum>
+         </property>
+         <layout class="QVBoxLayout" name="brushToolsVLayout">
+          <item>
+           <widget class="QLabel" name="brushToolsLabel">
+            <property name="font">
+             <font><bold>true</bold></font>
+            </property>
+            <property name="text">
+             <string>Brush Tools</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <layout class="QHBoxLayout" name="brushModeHLayout">
+            <item>
+             <widget class="QLabel" name="brushModeLabel">
+              <property name="text"><string>Mode:</string></property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QToolButton" name="brushModeButton">
+              <property name="text"><string>Brush</string></property>
+              <property name="checkable"><bool>true</bool></property>
+              <property name="checked"><bool>true</bool></property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QToolButton" name="eraserModeButton">
+              <property name="text"><string>Erase</string></property>
+              <property name="checkable"><bool>true</bool></property>
+             </widget>
+            </item>
+            <item>
+             <spacer name="brushModeSpacerH">
+              <property name="orientation"><enum>Qt::Orientation::Horizontal</enum></property>
+              <property name="sizeHint" stdset="0">
+               <size><width>40</width><height>20</height></size>
+              </property>
+             </spacer>
+            </item>
+           </layout>
+          </item>
+          <item>
+           <layout class="QHBoxLayout" name="applyReferenceHLayout">
+            <item>
+             <widget class="QLabel" name="applyReferenceLabel">
+              <property name="text"><string>Reference:</string></property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QComboBox" name="applyReferenceCombo"/>
+            </item>
+           </layout>
+          </item>
+          <item>
+           <layout class="QHBoxLayout" name="applySwatchesHLayout">
+            <item>
+             <widget class="QLabel" name="applySwatchesLabel">
+              <property name="text"><string>Apply:</string></property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QWidget" name="applySwatchesWidget">
+              <property name="sizePolicy">
+               <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+                <horstretch>0</horstretch>
+                <verstretch>0</verstretch>
+               </sizepolicy>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item>
+           <layout class="QHBoxLayout" name="brushSizeHLayout">
+            <item>
+             <widget class="QLabel" name="brushSizeLabel">
+              <property name="text"><string>Size:</string></property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QSpinBox" name="brushSizeSpinBox">
+              <property name="minimum"><number>1</number></property>
+              <property name="maximum"><number>100</number></property>
+              <property name="value"><number>8</number></property>
+             </widget>
+            </item>
+            <item>
+             <spacer name="brushSizeSpacerH">
+              <property name="orientation"><enum>Qt::Orientation::Horizontal</enum></property>
+              <property name="sizeHint" stdset="0">
+               <size><width>40</width><height>20</height></size>
+              </property>
+             </spacer>
+            </item>
+           </layout>
+          </item>
+          <item>
+           <layout class="QHBoxLayout" name="brushShapeHLayout">
+            <item>
+             <widget class="QLabel" name="brushShapeLabel">
+              <property name="text"><string>Shape:</string></property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QComboBox" name="brushShapeComboBox">
+              <item><property name="text"><string>Circle</string></property></item>
+              <item><property name="text"><string>Square</string></property></item>
+             </widget>
+            </item>
+            <item>
+             <spacer name="brushShapeSpacerH">
+              <property name="orientation"><enum>Qt::Orientation::Horizontal</enum></property>
+              <property name="sizeHint" stdset="0">
+               <size><width>40</width><height>20</height></size>
+              </property>
+             </spacer>
+            </item>
+           </layout>
+          </item>
+         </layout>
         </widget>
        </item>
       </layout>
