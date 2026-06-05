@@ -1,7 +1,7 @@
 
 #WORLD CONFIGURATION
 #---------------------
-WORLD_NAME = 'Atriath'
+WORLD_NAME = 'Ettrial'
 # WORLD_NAME = 'Testasiia'
 
 

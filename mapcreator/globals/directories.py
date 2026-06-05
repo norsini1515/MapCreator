@@ -6,7 +6,7 @@ ROOT_DRIVE = 'C:/Users/nicho/Documents/World Building'
 
 BASE_DIR = pl.Path(f"{ROOT_DRIVE}/MapCreator")
 
-# DATA_DIR = pl.Path(f"{ROOT_DRIVE}/map_data/{configs.WORLD_NAME}")
+WORLD_DIR = pl.Path(f"{ROOT_DRIVE}/map_data/{configs.WORLD_NAME}")
 
 LOGS_DIR = BASE_DIR / "logs"
 
@@ -26,6 +26,11 @@ RAW_DATA_DIR = DATA_DIR / "raw"
 IMAGES_DIR = DATA_DIR / 'images'
 SHAPEFILES_DIR = DATA_DIR / "shapefiles"
 TEMP_FILES_DIR = DATA_DIR / "temp_files"
+
+# Default directory for all file-open / file-save dialogs.
+# Change this one line to redirect every dialog to a different folder.
+# DEFAULT_OPEN_DIR = pl.Path.cwd()
+DEFAULT_OPEN_DIR = WORLD_DIR
 
 if __name__ == '__main__':
     print(f"{BASE_DIR=}")

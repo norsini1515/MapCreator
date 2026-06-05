@@ -5,8 +5,8 @@ from typing import Any
 
 from PySide6.QtCore import QObject, Signal, Qt
 from PySide6.QtWidgets import (
-    QWidget, QDockWidget, QGridLayout, QPushButton, QScrollArea, QLabel, QVBoxLayout,
-    QHBoxLayout, QToolButton, QSpinBox, QComboBox, QButtonGroup,
+    QWidget, QCheckBox, QDockWidget, QGridLayout, QPushButton, QScrollArea, QLabel,
+    QVBoxLayout, QHBoxLayout, QToolButton, QSpinBox, QComboBox, QButtonGroup,
 )
 
 _NULL_CLASS_ID = -99  # sentinel for "no brush selected"
@@ -30,7 +30,7 @@ class PaletteClass:
     palette_name: str
     color_hex: str
 
-def _clear_layout(layout: QGridLayout) -> None:
+def _clear_layout(layout) -> None:
     while layout.count():
         item = layout.takeAt(0)
         w = item.widget()
@@ -76,9 +76,11 @@ class PaletteControls(QObject):
     - Emit signal when selection changes or brush is cleared
     """
 
-    classSelected = Signal(int)        # emits class_id of selected class
-    brushCleared = Signal()            # emits when null/no-brush is selected
+    classSelected = Signal(int)          # emits class_id of selected class
+    brushCleared = Signal()              # emits when null/no-brush is selected
     brushSettingsChanged = Signal(int, str)  # (size, shape) whenever spinbox/combo changes
+    snapToGridChanged = Signal(bool)     # emits when snap-to-grid checkbox is toggled
+    moveModeChanged = Signal(bool)       # emits when move mode button is toggled
 
     def __init__(self, *, main_window: QWidget):
         super().__init__(main_window)
@@ -113,7 +115,7 @@ class PaletteControls(QObject):
         self._null_button: PaletteButton | None = None
         self.selected_class_id: int | None = None
 
-        self._grid.setAlignment(Qt.AlignTop)
+        self._grid.setAlignment(Qt.AlignmentFlag.AlignTop)
         self._grid.setHorizontalSpacing(6)
         self._grid.setVerticalSpacing(6)
         self._scroll.setWidgetResizable(True)
@@ -123,12 +125,15 @@ class PaletteControls(QObject):
         # Brush tools
         self._brush_mode_btn: QToolButton = self._must_find(self._dock, QToolButton, "brushModeButton")
         self._eraser_mode_btn: QToolButton = self._must_find(self._dock, QToolButton, "eraserModeButton")
+        self._move_mode_btn: QToolButton = self._must_find(self._dock, QToolButton, "moveModeButton")
+        self._snap_to_grid_check: QCheckBox = self._must_find(self._dock, QCheckBox, "snapToGridCheckBox")
         self._brush_size_spin: QSpinBox = self._must_find(self._dock, QSpinBox, "brushSizeSpinBox")
         self._brush_shape_combo: QComboBox = self._must_find(self._dock, QComboBox, "brushShapeComboBox")
 
         self._brush_mode_group = QButtonGroup(self)
         self._brush_mode_group.addButton(self._brush_mode_btn, 0)
         self._brush_mode_group.addButton(self._eraser_mode_btn, 1)
+        self._brush_mode_group.addButton(self._move_mode_btn, 2)
         self._brush_mode_group.setExclusive(True)
 
         self._brush_size_spin.valueChanged.connect(
@@ -137,9 +142,10 @@ class PaletteControls(QObject):
         self._brush_shape_combo.currentTextChanged.connect(
             lambda s: self.brushSettingsChanged.emit(self._brush_size_spin.value(), s)
         )
+        self._snap_to_grid_check.toggled.connect(self.snapToGridChanged)
+        self._move_mode_btn.toggled.connect(self.moveModeChanged)
 
         # Apply filter
-        self._apply_reference_combo: QComboBox = self._must_find(self._dock, QComboBox, "applyReferenceCombo")
         self._apply_swatches_widget: QWidget = self._must_find(self._dock, QWidget, "applySwatchesWidget")
         self._apply_disabled: set[int] = set()
 
@@ -167,6 +173,20 @@ class PaletteControls(QObject):
     @property
     def is_eraser(self) -> bool:
         return self._eraser_mode_btn.isChecked()
+
+    @property
+    def is_move_mode(self) -> bool:
+        return self._move_mode_btn.isChecked()
+
+    @property
+    def snap_to_grid(self) -> bool:
+        return self._snap_to_grid_check.isChecked()
+
+    def set_grid_active(self, active: bool) -> None:
+        """Enable or disable the snap-to-grid checkbox based on whether the grid is on."""
+        self._snap_to_grid_check.setEnabled(active)
+        if not active:
+            self._snap_to_grid_check.setChecked(False)
 
     def set_palette_defines(self, defines: dict[Any, dict[str, Any]], *, columns: int = 6) -> None:
         """
@@ -218,7 +238,7 @@ class PaletteControls(QObject):
                 color: #333333;
             }
         """)
-        null_btn.clicked.connect(lambda checked=False: self.clear_brush())
+        null_btn.clicked.connect(lambda _: self.clear_brush())
         self._grid.addWidget(null_btn, 0, 0)
         self._null_button = null_btn
 
@@ -229,7 +249,7 @@ class PaletteControls(QObject):
                 class_id=c.class_id, name=c.palette_name, color_hex=c.color_hex,
                 parent=self._buttons_widget,
             )
-            btn.clicked.connect(lambda checked=False, b=btn: self._on_button_clicked(b))
+            btn.clicked.connect(lambda _, b=btn: self._on_button_clicked(b))
             self._grid.addWidget(btn, r, col)
 
         # Start with no brush active
@@ -242,11 +262,7 @@ class PaletteControls(QObject):
     # Apply filter swatches
     # ------------------------------------------------------------------
     def _rebuild_apply_swatches(self, classes: list[PaletteClass]) -> None:
-        while self._apply_layout.count():
-            item = self._apply_layout.takeAt(0)
-            w = item.widget()
-            if w is not None:
-                w.deleteLater()
+        _clear_layout(self._apply_layout)
         self._apply_disabled.clear()
 
         for c in classes:
@@ -281,20 +297,6 @@ class PaletteControls(QObject):
 
     def get_disabled_classes(self) -> frozenset[int]:
         return frozenset(self._apply_disabled)
-
-    def get_reference_layer_name(self) -> str | None:
-        text = self._apply_reference_combo.currentText()
-        return text if text else None
-
-    def update_reference_layers(self, names: list[str]) -> None:
-        current = self._apply_reference_combo.currentText()
-        self._apply_reference_combo.blockSignals(True)
-        self._apply_reference_combo.clear()
-        self._apply_reference_combo.addItems(names)
-        idx = self._apply_reference_combo.findText(current)
-        if idx >= 0:
-            self._apply_reference_combo.setCurrentIndex(idx)
-        self._apply_reference_combo.blockSignals(False)
 
     def set_schema_label(self, schema: str) -> None:
         self._schema_label.setText(f"Active Palette: {schema.capitalize()}")

@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QListWidget,
     QListWidgetItem,
+    QMenu,
     QSlider,
     QStackedWidget,
     QToolButton,
@@ -36,6 +37,7 @@ class RasterLayer:
     schema: str
     path: Path
     item: QGraphicsPixmapItem
+    is_overlay: bool = False
 
 
 class LayerRowWidget(QWidget):
@@ -50,8 +52,12 @@ class LayerRowWidget(QWidget):
     _STYLE_VISIBLE = "QToolButton { border: none; color: #4a9eff; font-size: 14px; }"
     _STYLE_HIDDEN  = "QToolButton { border: none; color: #aaaaaa; font-size: 14px; }"
 
-    def __init__(self, name: str, parent: QWidget | None = None) -> None:
+    def __init__(self, name: str, is_overlay: bool = False,
+                 initial_opacity: int = 100, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+
+        if is_overlay:
+            self.setStyleSheet("background-color: #fff3e0;")
 
         row = QHBoxLayout(self)
         row.setContentsMargins(4, 3, 4, 3)
@@ -86,14 +92,14 @@ class LayerRowWidget(QWidget):
         # --- Opacity slider ---
         self._slider = QSlider(Qt.Orientation.Horizontal)
         self._slider.setRange(0, 100)
-        self._slider.setValue(100)
+        self._slider.setValue(initial_opacity)
         self._slider.setFixedWidth(72)
         self._slider.setToolTip("Opacity")
         self._slider.valueChanged.connect(self.opacityChanged)
         row.addWidget(self._slider)
 
         # --- Opacity percent label ---
-        self._pct_label = QLabel("100%")
+        self._pct_label = QLabel(f"{initial_opacity}%")
         self._pct_label.setFixedWidth(34)
         self._pct_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self._slider.valueChanged.connect(lambda v: self._pct_label.setText(f"{v}%"))
@@ -103,9 +109,13 @@ class LayerRowWidget(QWidget):
     # Event filter — double-click on the name label triggers rename
     # ------------------------------------------------------------------
     def eventFilter(self, obj, event: QEvent) -> bool:
-        if obj is self._name_label and event.type() == QEvent.Type.MouseButtonDblClick:
-            self.start_rename()
-            return True
+        if obj is self._name_label:
+            try:
+                if event.type() == QEvent.Type.MouseButtonDblClick:
+                    self.start_rename()
+                    return True
+            except SystemError:
+                pass
         return super().eventFilter(obj, event)
 
     # ------------------------------------------------------------------
@@ -147,11 +157,15 @@ class OpenLayersList(QListWidget):
     layerSchemaChanged = Signal(str)  # emits schema of the newly selected layer
     layerSelected = Signal(int)       # emits row index of the newly selected layer
     layerRenamed = Signal()           # emits whenever any layer's name changes
+    duplicateRequested = Signal(int)  # emits row index of the layer to duplicate
+    deleteRequested = Signal(int)     # emits row index of the layer to delete
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.raster_layers: list[RasterLayer] = []
         self.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
+        self.setDefaultDropAction(Qt.DropAction.MoveAction)
         self.currentRowChanged.connect(self._on_layer_selected)
 
     # ------------------------------------------------------------------
@@ -161,24 +175,97 @@ class OpenLayersList(QListWidget):
         self.raster_layers.insert(0, layer)
         info(f"Added layer: {layer.layer_name} (schema: {layer.schema}, path: {layer.path})")
 
-        row_widget = LayerRowWidget(layer.layer_name)
+        initial_opacity = round(layer.item.opacity() * 100)
+        row_widget = LayerRowWidget(layer.layer_name,
+                                    is_overlay=layer.is_overlay,
+                                    initial_opacity=initial_opacity)
 
         row_widget.visibilityToggled.connect(
-            lambda visible, l=layer: l.item.setVisible(visible)
+            lambda visible, _layer=layer: _layer.item.setVisible(visible)
         )
         row_widget.opacityChanged.connect(
-            lambda value, l=layer: l.item.setOpacity(value / 100.0)
+            lambda value, _layer=layer: _layer.item.setOpacity(value / 100.0)
         )
         row_widget.renameRequested.connect(
-            lambda name, l=layer: self._on_rename(l, name)
+            lambda name, _layer=layer: self._on_rename(_layer, name)
         )
 
         list_item = QListWidgetItem()
         list_item.setSizeHint(QSize(0, 44))
+        list_item.setData(Qt.ItemDataRole.UserRole, layer)
         self.insertItem(0, list_item)
         self.setItemWidget(list_item, row_widget)
 
         self.setCurrentRow(0)
+
+    # ------------------------------------------------------------------
+    # Drag-to-reorder
+    # ------------------------------------------------------------------
+    def dropEvent(self, event) -> None:
+        super().dropEvent(event)
+        self._sync_after_drop()
+
+    def _sync_after_drop(self) -> None:
+        """Rebuild raster_layers from the current visual order and update z-values."""
+        new_order: list[RasterLayer] = []
+        for i in range(self.count()):
+            layer = self.item(i).data(Qt.ItemDataRole.UserRole)
+            if layer is not None:
+                new_order.append(layer)
+        self.raster_layers = new_order
+        self._reorder_z_values()
+
+        row = self.currentRow()
+        if 0 <= row < len(self.raster_layers):
+            self.layerSchemaChanged.emit(self.raster_layers[row].schema)
+            self.layerSelected.emit(row)
+
+    # ------------------------------------------------------------------
+    # Right-click context menu
+    # ------------------------------------------------------------------
+    def contextMenuEvent(self, event) -> None:
+        item = self.itemAt(event.pos())
+        if item is None:
+            return
+        row = self.row(item)
+        if not (0 <= row < len(self.raster_layers)):
+            return
+
+        self.setCurrentRow(row)
+
+        menu = QMenu(self)
+        act_duplicate = menu.addAction("Duplicate")
+        menu.addSeparator()
+        act_delete = menu.addAction("Delete")
+
+        chosen = menu.exec(event.globalPos())
+        if chosen is act_duplicate:
+            self.duplicateRequested.emit(row)
+        elif chosen is act_delete:
+            self.deleteRequested.emit(row)
+
+    # ------------------------------------------------------------------
+    # Removing layers
+    # ------------------------------------------------------------------
+    def clear_all(self) -> None:
+        """Remove all layer rows and data without touching the scene."""
+        self.raster_layers.clear()
+        self.clear()  # QListWidget.clear()
+
+    def remove_layer(self, row: int) -> None:
+        if not (0 <= row < len(self.raster_layers)):
+            return
+        self.raster_layers.pop(row)
+        self.takeItem(row)
+        self._reorder_z_values()
+        new_row = min(row, self.count() - 1)
+        if new_row >= 0:
+            self.setCurrentRow(new_row)
+
+    def _reorder_z_values(self) -> None:
+        n = len(self.raster_layers)
+        for i, layer in enumerate(self.raster_layers):
+            layer.item.setZValue(n - i)
 
     # ------------------------------------------------------------------
     # Row signal handlers
@@ -193,5 +280,7 @@ class OpenLayersList(QListWidget):
     # ------------------------------------------------------------------
     def _on_layer_selected(self, row: int) -> None:
         if 0 <= row < len(self.raster_layers):
-            self.layerSchemaChanged.emit(self.raster_layers[row].schema)
+            layer = self.raster_layers[row]
+            if not layer.is_overlay:
+                self.layerSchemaChanged.emit(layer.schema)
             self.layerSelected.emit(row)

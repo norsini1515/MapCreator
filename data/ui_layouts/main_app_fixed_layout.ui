@@ -47,7 +47,7 @@
        </font>
       </property>
       <property name="text">
-       <string>MapCreator: Ettrial</string>
+       <string>MapCreator</string>
       </property>
      </widget>
     </item>
@@ -226,6 +226,12 @@
              </widget>
             </item>
             <item>
+             <widget class="QToolButton" name="moveModeButton">
+              <property name="text"><string>Move</string></property>
+              <property name="checkable"><bool>true</bool></property>
+             </widget>
+            </item>
+            <item>
              <spacer name="brushModeSpacerH">
               <property name="orientation"><enum>Qt::Orientation::Horizontal</enum></property>
               <property name="sizeHint" stdset="0">
@@ -236,16 +242,10 @@
            </layout>
           </item>
           <item>
-           <layout class="QHBoxLayout" name="applyReferenceHLayout">
-            <item>
-             <widget class="QLabel" name="applyReferenceLabel">
-              <property name="text"><string>Reference:</string></property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QComboBox" name="applyReferenceCombo"/>
-            </item>
-           </layout>
+           <widget class="QCheckBox" name="snapToGridCheckBox">
+            <property name="text"><string>Snap to Grid</string></property>
+            <property name="enabled"><bool>false</bool></property>
+           </widget>
           </item>
           <item>
            <layout class="QHBoxLayout" name="applySwatchesHLayout">
@@ -382,9 +382,12 @@
     <addaction name="actionNew_Project"/>
     <addaction name="actionOpen_Project"/>
     <addaction name="actionSave_Project"/>
-    <addaction name="separator"/>
+    <addaction name="actionSave_Project_As"/>
     <addaction name="separator"/>
     <addaction name="actionNew_Layer"/>
+    <addaction name="actionOpen_Layer"/>
+    <addaction name="actionOpen_Overlay"/>
+    <addaction name="actionSave_Layer"/>
    </widget>
    <widget class="QMenu" name="menuView">
     <property name="title">
@@ -395,13 +398,26 @@
       <string>Dockables</string>
      </property>
      <addaction name="actionLayer_List"/>
+     <addaction name="actionPalette_Controls"/>
     </widget>
     <addaction name="menuDockables"/>
    </widget>
+   <widget class="QMenu" name="menuOptions">
+    <property name="title">
+     <string>Options</string>
+    </property>
+    <addaction name="actionWorld_Data"/>
+   </widget>
    <addaction name="menuFile"/>
    <addaction name="menuView"/>
+   <addaction name="menuOptions"/>
   </widget>
   <widget class="QStatusBar" name="statusbar"/>
+  <action name="actionWorld_Data">
+   <property name="text">
+    <string>World Data</string>
+   </property>
+  </action>
   <action name="actionOpen_Project">
    <property name="text">
     <string>Open Project</string>
@@ -410,6 +426,11 @@
   <action name="actionSave_Project">
    <property name="text">
     <string>Save Project</string>
+   </property>
+  </action>
+  <action name="actionSave_Project_As">
+   <property name="text">
+    <string>Save Project As...</string>
    </property>
   </action>
   <action name="actionNew_Project">
@@ -422,9 +443,29 @@
     <string>Layer List</string>
    </property>
   </action>
+  <action name="actionPalette_Controls">
+   <property name="text">
+    <string>Palette Controls</string>
+   </property>
+  </action>
   <action name="actionNew_Layer">
    <property name="text">
     <string>New Layer</string>
+   </property>
+  </action>
+  <action name="actionOpen_Layer">
+   <property name="text">
+    <string>Open Layer</string>
+   </property>
+  </action>
+  <action name="actionOpen_Overlay">
+   <property name="text">
+    <string>Open Overlay</string>
+   </property>
+  </action>
+  <action name="actionSave_Layer">
+   <property name="text">
+    <string>Save Layer</string>
    </property>
   </action>
  </widget>
