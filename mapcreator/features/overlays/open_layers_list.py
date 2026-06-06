@@ -150,23 +150,33 @@ class LayerRowWidget(QWidget):
     def layer_name(self) -> str:
         return self._name_label.text()
 
+    def set_name(self, name: str) -> None:
+        self._name_label.setText(name)
+        self._name_edit.setText(name)
+
 
 class OpenLayersList(QListWidget):
     """QListWidget where each row is a LayerRowWidget."""
 
-    layerSchemaChanged = Signal(str)  # emits schema of the newly selected layer
-    layerSelected = Signal(int)       # emits row index of the newly selected layer
-    layerRenamed = Signal()           # emits whenever any layer's name changes
-    duplicateRequested = Signal(int)  # emits row index of the layer to duplicate
-    deleteRequested = Signal(int)     # emits row index of the layer to delete
+    layerSchemaChanged = Signal(str)            # emits schema of the newly selected layer
+    layerSelected      = Signal(int)            # emits row index of the newly selected layer
+    layerRenamed       = Signal(object, str, str)  # (layer, old_name, new_name)
+    duplicateRequested = Signal(int)            # emits row index of the layer to duplicate
+    deleteRequested    = Signal(int)            # emits row index of the layer to delete
+    mergeRequested     = Signal(list)           # emits sorted list of row indices to merge
+    reorderOccurred    = Signal(list, list)     # (old_order, new_order) after drag-reorder
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.raster_layers: list[RasterLayer] = []
         self.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
         self.setDefaultDropAction(Qt.DropAction.MoveAction)
         self.currentRowChanged.connect(self._on_layer_selected)
+
+    def selected_rows(self) -> list[int]:
+        return sorted(self.row(item) for item in self.selectedItems())
 
     # ------------------------------------------------------------------
     # Adding layers
@@ -202,11 +212,14 @@ class OpenLayersList(QListWidget):
     # Drag-to-reorder
     # ------------------------------------------------------------------
     def dropEvent(self, event) -> None:
+        old_order = list(self.raster_layers)
         super().dropEvent(event)
-        self._sync_after_drop()
+        new_order = self._sync_after_drop()
+        if old_order != new_order:
+            self.reorderOccurred.emit(old_order, new_order)
 
-    def _sync_after_drop(self) -> None:
-        """Rebuild raster_layers from the current visual order and update z-values."""
+    def _sync_after_drop(self) -> list[RasterLayer]:
+        """Rebuild raster_layers from current visual order, update z-values, return new order."""
         new_order: list[RasterLayer] = []
         for i in range(self.count()):
             layer = self.item(i).data(Qt.ItemDataRole.UserRole)
@@ -217,32 +230,43 @@ class OpenLayersList(QListWidget):
 
         row = self.currentRow()
         if 0 <= row < len(self.raster_layers):
-            self.layerSchemaChanged.emit(self.raster_layers[row].schema)
+            layer = self.raster_layers[row]
+            if not layer.is_overlay:
+                self.layerSchemaChanged.emit(layer.schema)
             self.layerSelected.emit(row)
+        return new_order
 
     # ------------------------------------------------------------------
     # Right-click context menu
     # ------------------------------------------------------------------
     def contextMenuEvent(self, event) -> None:
-        item = self.itemAt(event.pos())
-        if item is None:
-            return
-        row = self.row(item)
-        if not (0 <= row < len(self.raster_layers)):
+        if self.itemAt(event.pos()) is None:
             return
 
-        self.setCurrentRow(row)
+        rows = self.selected_rows()
+        if not rows:
+            return
 
         menu = QMenu(self)
-        act_duplicate = menu.addAction("Duplicate")
-        menu.addSeparator()
-        act_delete = menu.addAction("Delete")
 
-        chosen = menu.exec(event.globalPos())
-        if chosen is act_duplicate:
-            self.duplicateRequested.emit(row)
-        elif chosen is act_delete:
-            self.deleteRequested.emit(row)
+        if len(rows) > 1:
+            act_merge = menu.addAction(f"Merge {len(rows)} Layers")
+            chosen = menu.exec(event.globalPos())
+            if chosen is act_merge:
+                self.mergeRequested.emit(rows)
+        else:
+            row = rows[0]
+            if not (0 <= row < len(self.raster_layers)):
+                return
+            self.setCurrentRow(row)
+            act_duplicate = menu.addAction("Duplicate")
+            menu.addSeparator()
+            act_delete = menu.addAction("Delete")
+            chosen = menu.exec(event.globalPos())
+            if chosen is act_duplicate:
+                self.duplicateRequested.emit(row)
+            elif chosen is act_delete:
+                self.deleteRequested.emit(row)
 
     # ------------------------------------------------------------------
     # Removing layers
@@ -268,12 +292,62 @@ class OpenLayersList(QListWidget):
             layer.item.setZValue(n - i)
 
     # ------------------------------------------------------------------
+    # Undo helpers
+    # ------------------------------------------------------------------
+    def get_row_widget(self, layer: RasterLayer) -> LayerRowWidget | None:
+        """Return the LayerRowWidget for the given layer, or None."""
+        for i in range(self.count()):
+            item = self.item(i)
+            if item.data(Qt.ItemDataRole.UserRole) is layer:
+                w = self.itemWidget(item)
+                return w if isinstance(w, LayerRowWidget) else None
+        return None
+
+    def restore_order(self, target_order: list[RasterLayer]) -> None:
+        """Rebuild the list widget to exactly match target_order (for undo/redo of reorder)."""
+        self.blockSignals(True)
+        while self.count():
+            self.takeItem(0)
+        self.raster_layers = []
+
+        for layer in reversed(target_order):
+            initial_opacity = round(layer.item.opacity() * 100)
+            row_widget = LayerRowWidget(
+                layer.layer_name,
+                is_overlay=layer.is_overlay,
+                initial_opacity=initial_opacity,
+            )
+            row_widget.visibilityToggled.connect(
+                lambda visible, _l=layer: _l.item.setVisible(visible)
+            )
+            row_widget.opacityChanged.connect(
+                lambda value, _l=layer: _l.item.setOpacity(value / 100.0)
+            )
+            row_widget.renameRequested.connect(
+                lambda name, _l=layer: self._on_rename(_l, name)
+            )
+            list_item = QListWidgetItem()
+            list_item.setSizeHint(QSize(0, 44))
+            list_item.setData(Qt.ItemDataRole.UserRole, layer)
+            self.insertItem(0, list_item)
+            self.setItemWidget(list_item, row_widget)
+            self.raster_layers.insert(0, layer)
+
+        self._reorder_z_values()
+        self.blockSignals(False)
+
+        if self.count() > 0:
+            self.setCurrentRow(0)
+        self._on_layer_selected(self.currentRow())
+
+    # ------------------------------------------------------------------
     # Row signal handlers
     # ------------------------------------------------------------------
-    def _on_rename(self, layer: RasterLayer, name: str) -> None:
-        layer.layer_name = name
-        info(f"Layer renamed to: {name}")
-        self.layerRenamed.emit()
+    def _on_rename(self, layer: RasterLayer, new_name: str) -> None:
+        old_name = layer.layer_name
+        layer.layer_name = new_name
+        info(f"Layer renamed: '{old_name}' → '{new_name}'")
+        self.layerRenamed.emit(layer, old_name, new_name)
 
     # ------------------------------------------------------------------
     # Selection → palette sync

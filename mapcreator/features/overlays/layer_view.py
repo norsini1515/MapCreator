@@ -18,6 +18,9 @@ class LayerView(QGraphicsView):
     cursorLeft    = Signal()             # cursor has left the viewport
     layerMoved    = Signal(float, float) # (dx, dy) scene-space delta while dragging in move mode
     handleDragged = Signal(int, QPointF) # (handle_index, scene_pos) while resizing an overlay
+    paintEnded    = Signal()             # left-button released after a paint/erase stroke
+    layerMoveEnded  = Signal()           # left-button released after a move drag
+    handleDragEnded = Signal()           # left-button released after a resize drag
 
     # Handle layout: 0=NW 1=N 2=NE 3=W 4=E 5=SW 6=S 7=SE
     _HANDLE_SIZE = 8  # screen pixels (half-size used for hit detection)
@@ -419,12 +422,18 @@ class LayerView(QGraphicsView):
             return
 
         if self._move_mode and event.button() == Qt.MouseButton.LeftButton:
+            if self._resize_handle is not None:
+                self.handleDragEnded.emit()
+            elif self._move_last_pos is not None:
+                self.layerMoveEnded.emit()
             self._move_last_pos = None
             self._resize_handle = None
             event.accept()
             return
 
         if self._paint_mode and event.button() == Qt.MouseButton.LeftButton:
+            if self._painting:
+                self.paintEnded.emit()
             self._painting = False
             event.accept()
             return

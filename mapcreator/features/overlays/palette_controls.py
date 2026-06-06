@@ -81,6 +81,7 @@ class PaletteControls(QObject):
     brushSettingsChanged = Signal(int, str)  # (size, shape) whenever spinbox/combo changes
     snapToGridChanged = Signal(bool)     # emits when snap-to-grid checkbox is toggled
     moveModeChanged = Signal(bool)       # emits when move mode button is toggled
+    schemaComboChanged = Signal(str)     # emits schema name when user picks from the combobox
 
     def __init__(self, *, main_window: QWidget):
         super().__init__(main_window)
@@ -89,6 +90,8 @@ class PaletteControls(QObject):
         self._scroll: QScrollArea = self._must_find(self._dock, QScrollArea, "scrollArea")
         self._schema_label: QLabel = self._must_find(self._dock, QLabel, "active_palette_label")
         self._brush_label: QLabel = self._must_find(self._dock, QLabel, "active_brush_label")
+        self._schema_combo: QComboBox = self._must_find(self._dock, QComboBox, "paletteSchemaComboBox")
+        self._schema_combo.currentTextChanged.connect(self._on_schema_combo_changed)
 
         # In the .ui file the QGridLayout lives on gridLayoutWidget (a child of
         # paletteButtonsWidget), not on paletteButtonsWidget itself.
@@ -181,6 +184,34 @@ class PaletteControls(QObject):
     @property
     def snap_to_grid(self) -> bool:
         return self._snap_to_grid_check.isChecked()
+
+    @property
+    def current_schema(self) -> str | None:
+        text = self._schema_combo.currentText()
+        return text if text else None
+
+    def populate_schemas(self, schemas: list[str]) -> None:
+        """Fill the schema combobox; preserves current selection if still present."""
+        current = self._schema_combo.currentText()
+        self._schema_combo.blockSignals(True)
+        self._schema_combo.clear()
+        self._schema_combo.addItems(schemas)
+        idx = self._schema_combo.findText(current)
+        if idx >= 0:
+            self._schema_combo.setCurrentIndex(idx)
+        self._schema_combo.blockSignals(False)
+
+    def set_schema(self, schema: str) -> None:
+        """Sync the combobox to reflect schema without emitting schemaComboChanged."""
+        self._schema_combo.blockSignals(True)
+        idx = self._schema_combo.findText(schema)
+        if idx >= 0:
+            self._schema_combo.setCurrentIndex(idx)
+        self._schema_combo.blockSignals(False)
+
+    def _on_schema_combo_changed(self, schema: str) -> None:
+        if schema:
+            self.schemaComboChanged.emit(schema)
 
     def set_grid_active(self, active: bool) -> None:
         """Enable or disable the snap-to-grid checkbox based on whether the grid is on."""

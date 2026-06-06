@@ -17,6 +17,18 @@ classes:
       2: {name: Mountain_Extreme, color: "#6b0580", role: mountain, strength: 1.00, smooth_px: 6}
       3: {name: Mountain,         color: "#9102ad", role: mountain, strength: 0.70, smooth_px: 10}
       4: {name: Hill,             color: "#bb18db", role: mountain, strength: 0.35, smooth_px: 18}
+  terrain_character:
+    defines:
+      0:  {name: Waterbody,   color: "#8BBBEB"}
+      1:  {name: Land,        color: "#DDFFBE"}
+      -1: {name: Default,     color: "#f5f2f2"}
+      # landform shape / erosional character — orthogonal to elevation magnitude
+      2:  {name: Plateau,     color: "#C8A96E", role: plateau,     roughness: low}
+      3:  {name: Badlands,    color: "#B85C2A", role: badlands,    roughness: high}
+      4:  {name: Escarpment,  color: "#7D6B5A", role: cliff,       roughness: extreme}
+      5:  {name: Canyon,      color: "#8B3A15", role: canyon,      roughness: high}
+      6:  {name: Volcanic,    color: "#352420", role: volcanic,    roughness: variable}
+
   climate:
     defines:
       0: {name: Waterbody, color: "#8BBBEB"}

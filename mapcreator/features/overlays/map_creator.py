@@ -17,7 +17,9 @@ import json
 import math
 import zipfile
 from pathlib import Path
-from typing import Optional, Iterable, cast
+from typing import Optional, cast
+
+from mapcreator.features.overlays.undo_stack import UndoStack, UndoCommand
 
 from PySide6.QtUiTools import QUiLoader
 from PySide6.QtCore import QBuffer, QByteArray, QFile, Qt, QIODevice, QPointF, QRect, QSize
@@ -52,62 +54,6 @@ from mapcreator.features.overlays.palette_controls import PaletteControls
 
 from mapcreator.globals.config_models import read_config_file
 from mapcreator.globals.logutil import error
-
-class NewLayerDialog(QDialog):
-    """
-    Popup dialog to choose the "layer type"/schema (terrain, climate, etc.).
-    """
-
-    def __init__(self, schemas: Iterable[str], parent=None) -> None:
-        super().__init__(parent)
-        self.setWindowTitle("New Layer")
-        self.setModal(True)
-
-        self._schemas = list(schemas)
-        self._selected: Optional[str] = None
-
-        # ---- UI ----
-        layout = QVBoxLayout(self)
-
-        blurb = QLabel("Select a layer type (schema) for the new layer:")
-        blurb.setWordWrap(True)
-        layout.addWidget(blurb)
-
-        form = QFormLayout()
-        self.schema_combo = QComboBox()
-        self.schema_combo.addItems(self._schemas)
-        form.addRow("Layer type:", self.schema_combo)
-        layout.addLayout(form)
-
-        buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
-        )
-        buttons.accepted.connect(self._on_accept)
-        buttons.rejected.connect(self.reject)
-        layout.addWidget(buttons)
-
-        # Make it feel good: default selection + Enter to accept
-        if self._schemas:
-            self.schema_combo.setCurrentIndex(0)
-
-    def _on_accept(self) -> None:
-        self._selected = self.schema_combo.currentText().strip() or None
-        self.accept()
-
-    @property
-    def selected_schema(self) -> Optional[str]:
-        return self._selected
-
-    @staticmethod
-    def get_schema(schemas: Iterable[str], parent=None) -> Optional[str]:
-        """
-        Convenience: open dialog and return selected schema or None if cancelled.
-        """
-        dlg = NewLayerDialog(schemas, parent=parent)
-        result = dlg.exec()
-        if result == QDialog.DialogCode.Accepted:
-            return dlg.selected_schema
-        return None
 
 class WorldDataDialog(QDialog):
     """Popup for editing project-level world metadata (world name, etc.)."""
@@ -231,6 +177,12 @@ class MapCreator:
         self._paint_item: Optional[QGraphicsPixmapItem] = None
         self._paint_origin: QPointF = QPointF(0, 0)
         self._paint_layer_counts: dict[str, int] = {}
+
+        # Undo/redo
+        self.undo_stack: UndoStack = UndoStack()
+        self._stroke_start_image: Optional[QImage] = None   # snapshot before current stroke
+        self._move_start_pos: Optional[QPointF] = None      # item pos before current drag
+        self._resize_start_state: Optional[tuple] = None    # (pos, transform) before resize
 
         self.class_cfg = class_cfg or read_config_file(None, kind="class_configs")
 
@@ -439,6 +391,7 @@ class MapCreator:
 
     def _wire_events(self) -> None:
         """Connect UI actions/signals to handlers."""
+        assert self.window is not None
         assert self.action_new_raster is not None
         assert self.open_layers_list is not None
 
@@ -448,18 +401,33 @@ class MapCreator:
         self.open_layers_list.layerSelected.connect(self._sync_paint_target)
         self.open_layers_list.duplicateRequested.connect(self._on_duplicate_layer)
         self.open_layers_list.deleteRequested.connect(self._on_delete_layer)
+        self.open_layers_list.mergeRequested.connect(self._on_merge_layers)
+        self.open_layers_list.layerRenamed.connect(self._on_layer_renamed)
+        self.open_layers_list.reorderOccurred.connect(self._on_layer_reordered)
         self.palette_controls.classSelected.connect(self._on_class_selected)
         self.palette_controls.brushCleared.connect(self._on_brush_cleared)
         self.palette_controls.brushSettingsChanged.connect(self.map_view.set_brush)
+        self.palette_controls.schemaComboChanged.connect(self._on_layer_schema_changed)
         self.palette_controls.snapToGridChanged.connect(self._on_snap_mode_changed)
         self.palette_controls.moveModeChanged.connect(self._on_move_mode_changed)
         self.map_view.paintStroke.connect(self._on_paint_stroke)
+        self.map_view.paintEnded.connect(self._on_paint_ended)
         self.map_view.layerMoved.connect(self._on_layer_moved)
+        self.map_view.layerMoveEnded.connect(self._on_layer_move_ended)
         self.map_view.handleDragged.connect(self._on_handle_dragged)
+        self.map_view.handleDragEnded.connect(self._on_handle_drag_ended)
         self.action_new_layer_mask.triggered.connect(self._new_layer_mask)
         self.action_open_overlay.triggered.connect(self.open_overlay_file)
 
+        # Undo / redo keyboard shortcuts
+        from PySide6.QtGui import QKeySequence, QShortcut
+        QShortcut(QKeySequence.StandardKey.Undo, self.window).activated.connect(self._undo)
+        QShortcut(QKeySequence("Ctrl+Y"), self.window).activated.connect(self._redo)
+
         self.map_view.set_brush(self.palette_controls.brush_size, self.palette_controls.brush_shape)
+
+        # Populate schema combobox from the registry (dynamic — reads YAML each time)
+        self._populate_schema_combo()
 
         # Canvas toolbar
         assert self._grid_toggle_btn is not None
@@ -506,6 +474,18 @@ class MapCreator:
             self.action_palette_controls.toggled.connect(self.layer_control_dock.setVisible)
             self.layer_control_dock.visibilityChanged.connect(self.action_palette_controls.setChecked)
 
+    def _populate_schema_combo(self) -> None:
+        """Reload class_registry.yml and push schema names into the palette combobox."""
+        if self.palette_controls is None:
+            return
+        try:
+            self.class_cfg = read_config_file(None, kind="class_configs")
+            schemas = self.class_cfg.get_registry_sections()
+        except Exception:
+            schemas = list(self.class_cfg.get_registry_sections()) if self.class_cfg else []
+        if schemas:
+            self.palette_controls.populate_schemas(schemas)
+
     def _on_layer_schema_changed(self, schema: str) -> None:
         if schema == self._active_schema:
             return  # same schema — palette already correct, don't reset brush
@@ -518,6 +498,8 @@ class MapCreator:
         raw = {class_id: {"name": cd.name, "color": cd.color} for class_id, cd in defines.items()}
         self.palette_controls.set_palette_defines(raw)
         self.palette_controls.set_schema_label(schema)
+        # Keep the combobox in sync when schema changes via layer selection
+        self.palette_controls.set_schema(schema)
 
     def _sync_paint_target(self, row: int) -> None:
         """Point _paint_image/_paint_item at the currently selected layer."""
@@ -657,6 +639,9 @@ class MapCreator:
         if not is_eraser and self._active_class_color is None:
             return
 
+        if self._stroke_start_image is None:
+            self._stroke_start_image = self._paint_image.copy()
+
         if self.palette_controls is not None and self.palette_controls.snap_to_grid:
             self._paint_snap_cell(pos, is_eraser)
             return
@@ -763,7 +748,7 @@ class MapCreator:
             item=new_item,
         )
         self.open_layers_list.add_raster_layer(layer)
-
+        self._push_create_cmd(layer, f"Duplicate '{layer.layer_name}'")
         self._status(f"Duplicated: {layer.layer_name}", 2000)
 
     def _on_delete_layer(self, row: int) -> None:
@@ -773,20 +758,151 @@ class MapCreator:
         if not (0 <= row < len(layers)):
             return
         layer = layers[row]
+        saved_z = layer.item.zValue()
+
         if self._paint_item is layer.item:
             self._paint_image = None
             self._paint_item = None
+        if layer.is_overlay and self.map_view is not None:
+            self.map_view.set_overlay_item(None)
         self.scene.removeItem(layer.item)
         self.open_layers_list.remove_layer(row)
 
+        def undo_delete() -> None:
+            assert self.scene is not None
+            assert self.open_layers_list is not None
+            layer.item.setZValue(saved_z)
+            self.scene.addItem(layer.item)
+            self.open_layers_list.add_raster_layer(layer)
+
+        def redo_delete() -> None:
+            r = self._find_layer_row(layer)
+            if r < 0:
+                return
+            if layer.item is self._paint_item:
+                self._paint_image = None
+                self._paint_item = None
+            if layer.is_overlay and self.map_view is not None:
+                self.map_view.set_overlay_item(None)
+            assert self.scene is not None
+            assert self.open_layers_list is not None
+            self.scene.removeItem(layer.item)
+            self.open_layers_list.remove_layer(r)
+
+        self.undo_stack.push(UndoCommand(
+            undo_fn=undo_delete, redo_fn=redo_delete,
+            description=f"Delete '{layer.layer_name}'"
+        ))
         self._status(f"Deleted layer: {layer.layer_name}", 2000)
+
+    def _on_merge_layers(self, rows: list) -> None:
+        if self.scene is None or self.open_layers_list is None:
+            return
+        layers = self.open_layers_list.raster_layers
+        valid = [r for r in rows if 0 <= r < len(layers)]
+        if len(valid) < 2:
+            return
+
+        selected = [layers[r] for r in valid]
+
+        if any(l.is_overlay for l in selected):
+            self._status("Cannot merge overlay layers.", 3000)
+            return
+
+        pre_merge_order = list(self.open_layers_list.raster_layers)
+
+        selected_sorted = sorted(selected, key=lambda l: l.item.zValue())
+        top_layer = selected_sorted[-1]
+
+        bounds = self.scene.itemsBoundingRect()
+        if bounds.isNull():
+            return
+        w, h = int(bounds.width()), int(bounds.height())
+        origin = bounds.topLeft()
+
+        merged_img = QImage(w, h, QImage.Format.Format_ARGB32)
+        merged_img.fill(Qt.GlobalColor.transparent)
+
+        painter = QPainter(merged_img)
+        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
+        for layer in selected_sorted:
+            src = layer.item.pixmap().toImage().convertToFormat(QImage.Format.Format_ARGB32)
+            off_x = int(layer.item.pos().x() - origin.x())
+            off_y = int(layer.item.pos().y() - origin.y())
+            painter.drawImage(off_x, off_y, src)
+        painter.end()
+
+        new_item = QGraphicsPixmapItem(QPixmap.fromImage(merged_img))
+        new_item.setPos(origin)
+        new_item.setZValue(top_layer.item.zValue())
+        self.scene.addItem(new_item)
+
+        new_layer = RasterLayer(
+            layer_name=f"Merged: {top_layer.layer_name}",
+            schema=top_layer.schema,
+            path=Path("merged"),
+            item=new_item,
+        )
+
+        for row in sorted(valid, reverse=True):
+            layer = layers[row]
+            if layer.item is self._paint_item:
+                self._paint_image = None
+                self._paint_item = None
+            self.scene.removeItem(layer.item)
+            self.open_layers_list.remove_layer(row)
+
+        self.open_layers_list.add_raster_layer(new_layer)
+        post_merge_order = list(self.open_layers_list.raster_layers)
+
+        removed = [l for l in pre_merge_order if l not in post_merge_order]
+        added   = [l for l in post_merge_order if l not in pre_merge_order]
+
+        def undo_merge() -> None:
+            assert self.scene is not None
+            assert self.open_layers_list is not None
+            for l in added:
+                r = self._find_layer_row(l)
+                if r >= 0:
+                    if l.item is self._paint_item:
+                        self._paint_image = None
+                        self._paint_item = None
+                    self.scene.removeItem(l.item)
+            for l in removed:
+                self.scene.addItem(l.item)
+            self.open_layers_list.restore_order(pre_merge_order)
+
+        def redo_merge() -> None:
+            assert self.scene is not None
+            assert self.open_layers_list is not None
+            for l in removed:
+                r = self._find_layer_row(l)
+                if r >= 0:
+                    if l.item is self._paint_item:
+                        self._paint_image = None
+                        self._paint_item = None
+                    self.scene.removeItem(l.item)
+            for l in added:
+                self.scene.addItem(l.item)
+            self.open_layers_list.restore_order(post_merge_order)
+
+        self.undo_stack.push(UndoCommand(
+            undo_fn=undo_merge, redo_fn=redo_merge,
+            description=f"Merge {len(valid)} layers"
+        ))
+        self._status(f"Merged {len(valid)} layers → {new_layer.layer_name}", 3000)
 
     def _new_layer_mask(self) -> None:
         if self.scene is None or self.map_view is None or self.open_layers_list is None:
             return
 
-        schema = self._active_schema or "unknown"
-        name_base = self._active_class_name or self._active_schema or "Paint"
+        # Schema comes from the palette combobox, falling back to the active schema
+        schema = (
+            (self.palette_controls.current_schema if self.palette_controls else None)
+            or self._active_schema
+            or "unknown"
+        )
+        name_base = self._active_class_name or schema or "Paint"
         count = self._paint_layer_counts.get(name_base, 0) + 1
         self._paint_layer_counts[name_base] = count
 
@@ -817,7 +933,7 @@ class MapCreator:
         # add_raster_layer auto-selects the new row, which fires layerSelected →
         # _sync_paint_target, so _paint_image/_paint_item are set for us.
         self.open_layers_list.add_raster_layer(layer)
-
+        self._push_create_cmd(layer, f"New layer '{layer_name}'")
         self._status(f"Created mask layer: {layer_name}")
 
     # -----------------------------
@@ -897,6 +1013,7 @@ class MapCreator:
         if name is None:
             return
         self._clear_all_layers()
+        self.undo_stack.clear()
         self._current_project_path = None
         self._update_world_name(name)
         self._status("New project created.", 2000)
@@ -1054,6 +1171,7 @@ class MapCreator:
             return
         self._current_project_path = Path(path_str)
         self._update_world_name(meta.get("world_name", ""))
+        self.undo_stack.clear()
 
         layers = self.open_layers_list.raster_layers
         if layers and self.map_view is not None:
@@ -1061,6 +1179,156 @@ class MapCreator:
             if not bounds.isNull():
                 self.map_view.fitInView(bounds, Qt.AspectRatioMode.KeepAspectRatio)
         self._status(f"Opened: {Path(path_str).name} ({len(layers)} layers)", 3000)
+
+    # -----------------------------
+    # Undo / redo
+    # -----------------------------
+    def _undo(self) -> None:
+        desc = self.undo_stack.undo()
+        self._status(f"Undo: {desc}" if desc else "Nothing to undo.", 1500)
+
+    def _redo(self) -> None:
+        desc = self.undo_stack.redo()
+        self._status(f"Redo: {desc}" if desc else "Nothing to redo.", 1500)
+
+    def _find_layer_row(self, layer: RasterLayer) -> int:
+        if self.open_layers_list is None:
+            return -1
+        for i, l in enumerate(self.open_layers_list.raster_layers):
+            if l is layer:
+                return i
+        return -1
+
+    def _apply_paint_image(self, item: QGraphicsPixmapItem, img: QImage) -> None:
+        """Restore img to item; also updates _paint_image if item is the active paint target."""
+        item.setPixmap(QPixmap.fromImage(img))
+        if item is self._paint_item:
+            self._paint_image = img.copy()
+
+    def _push_create_cmd(self, layer: RasterLayer, description: str) -> None:
+        """Record an undo command for a layer that was just added to the scene and list."""
+        saved_z = layer.item.zValue()
+
+        def undo() -> None:
+            row = self._find_layer_row(layer)
+            if row < 0:
+                return
+            if layer.item is self._paint_item:
+                self._paint_image = None
+                self._paint_item = None
+            if layer.is_overlay and self.map_view is not None:
+                self.map_view.set_overlay_item(None)
+            assert self.scene is not None
+            assert self.open_layers_list is not None
+            self.scene.removeItem(layer.item)
+            self.open_layers_list.remove_layer(row)
+
+        def redo() -> None:
+            assert self.scene is not None
+            assert self.open_layers_list is not None
+            layer.item.setZValue(saved_z)
+            self.scene.addItem(layer.item)
+            self.open_layers_list.add_raster_layer(layer)
+
+        self.undo_stack.push(UndoCommand(undo_fn=undo, redo_fn=redo, description=description))
+
+    def _on_paint_ended(self) -> None:
+        if self._stroke_start_image is None or self._paint_image is None or self._paint_item is None:
+            self._stroke_start_image = None
+            return
+        before = self._stroke_start_image
+        after  = self._paint_image.copy()
+        item   = self._paint_item
+        self._stroke_start_image = None
+        self.undo_stack.push(UndoCommand(
+            undo_fn=lambda: self._apply_paint_image(item, before),
+            redo_fn=lambda: self._apply_paint_image(item, after),
+            description="Paint stroke",
+        ))
+
+    def _on_layer_move_ended(self) -> None:
+        if self._move_start_pos is None:
+            return
+        if self.open_layers_list is None:
+            self._move_start_pos = None
+            return
+        row = self.open_layers_list.currentRow()
+        layers = self.open_layers_list.raster_layers
+        if not (0 <= row < len(layers)):
+            self._move_start_pos = None
+            return
+        item = layers[row].item
+        start_pos = self._move_start_pos
+        end_pos   = item.pos()
+        self._move_start_pos = None
+        if start_pos == end_pos:
+            return
+
+        def apply_pos(pos: QPointF) -> None:
+            item.setPos(pos)
+            if item is self._paint_item:
+                self._paint_origin = pos
+            if self.map_view is not None:
+                self.map_view.viewport().update()
+
+        self.undo_stack.push(UndoCommand(
+            undo_fn=lambda: apply_pos(start_pos),
+            redo_fn=lambda: apply_pos(end_pos),
+            description="Move layer",
+        ))
+
+    def _on_handle_drag_ended(self) -> None:
+        if self._resize_start_state is None:
+            return
+        if self.open_layers_list is None:
+            self._resize_start_state = None
+            return
+        row = self.open_layers_list.currentRow()
+        layers = self.open_layers_list.raster_layers
+        if not (0 <= row < len(layers)):
+            self._resize_start_state = None
+            return
+        item = layers[row].item
+        start_pos, start_tf = self._resize_start_state
+        end_pos = item.pos()
+        end_tf  = item.transform()
+        self._resize_start_state = None
+
+        def apply(pos: QPointF, tf: QTransform) -> None:
+            item.setPos(pos)
+            item.setTransform(tf)
+            if self.map_view is not None:
+                self.map_view.viewport().update()
+
+        self.undo_stack.push(UndoCommand(
+            undo_fn=lambda: apply(start_pos, start_tf),
+            redo_fn=lambda: apply(end_pos, end_tf),
+            description="Resize overlay",
+        ))
+
+    def _on_layer_renamed(self, layer: object, old_name: str, new_name: str) -> None:
+        rl: RasterLayer = layer  # type: ignore[assignment]
+
+        def apply_name(name: str) -> None:
+            rl.layer_name = name
+            if self.open_layers_list is None:
+                return
+            w = self.open_layers_list.get_row_widget(rl)
+            if w is not None:
+                w.set_name(name)
+
+        self.undo_stack.push(UndoCommand(
+            undo_fn=lambda: apply_name(old_name),
+            redo_fn=lambda: apply_name(new_name),
+            description=f"Rename to '{new_name}'",
+        ))
+
+    def _on_layer_reordered(self, old_order: list, new_order: list) -> None:
+        self.undo_stack.push(UndoCommand(
+            undo_fn=lambda: self.open_layers_list.restore_order(old_order),
+            redo_fn=lambda: self.open_layers_list.restore_order(new_order),
+            description="Reorder layers",
+        ))
 
     # -----------------------------
     # Public run loop
@@ -1074,30 +1342,17 @@ class MapCreator:
     # Layer actions
     # -----------------------------
     def new_layer_flow(self) -> None:
-        """
-        User clicks New Layer:
-          1) choose schema (terrain/climate/etc)
-          2) then proceed to create/load the layer
-        """
+        """Open a raster file and add it as a layer using the currently selected schema."""
         assert self.window is not None
 
-        # 1) gather schema names
-        try:
-            schemas = self.class_cfg.get_run_scheme_sections()
-        except Exception:
-            # fallback if config not loaded or method missing
-            schemas = ["base", "terrain", "climate"]
+        # Refresh combobox so any YAML edits since startup are reflected
+        self._populate_schema_combo()
 
-        if not schemas:
-            self._status("No schemas found in class config.", 4000)
-            return
-
-        # 2) show dialog
-        schema = NewLayerDialog.get_schema(schemas, parent=self.window)
-        if schema is None:
-            return  # user cancelled
-
-        self._status(f"Creating new '{schema}' layer...", 2000)
+        schema = (
+            (self.palette_controls.current_schema if self.palette_controls else None)
+            or "unknown"
+        )
+        self._status(f"Opening raster for schema '{schema}'…", 2000)
         self.add_raster_layer_dialog(schema=schema)
 
     def add_raster_layer_dialog(self, schema: str | None = None) -> None:
@@ -1148,6 +1403,7 @@ class MapCreator:
         if len(self.open_layers_list.raster_layers) == 1:
             self.map_view.fitInView(item.sceneBoundingRect(), Qt.AspectRatioMode.KeepAspectRatio)
 
+        self._push_create_cmd(layer, f"Open '{path.name}'")
         self._status(f"Loaded raster layer: {path.name}", 3000)
 
     # -----------------------------
@@ -1184,6 +1440,7 @@ class MapCreator:
         self.open_layers_list.add_raster_layer(layer)
         if len(self.open_layers_list.raster_layers) == 1 and self.map_view is not None:
             self.map_view.fitInView(item.sceneBoundingRect(), Qt.AspectRatioMode.KeepAspectRatio)
+        self._push_create_cmd(layer, f"Open overlay '{path.name}'")
         self._status(f"Opened overlay: {path.name}", 3000)
 
     # -----------------------------
@@ -1213,6 +1470,8 @@ class MapCreator:
         if not (0 <= row < len(layers)):
             return
         item = layers[row].item
+        if self._move_start_pos is None:
+            self._move_start_pos = item.pos()  # snapshot before first delta
         item.setPos(item.pos() + QPointF(dx, dy))
         if item is self._paint_item:
             self._paint_origin = item.pos()
@@ -1231,6 +1490,9 @@ class MapCreator:
         H0 = float(item.pixmap().height())
         if W0 <= 0 or H0 <= 0:
             return
+
+        if self._resize_start_state is None:
+            self._resize_start_state = (item.pos(), item.transform())
 
         t   = item.transform()
         sx  = t.m11() if t.m11() != 0 else 1.0
