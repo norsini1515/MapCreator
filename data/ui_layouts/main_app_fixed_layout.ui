@@ -392,6 +392,7 @@
     <addaction name="actionNew_Layer"/>
     <addaction name="actionOpen_Layer"/>
     <addaction name="actionOpen_Overlay"/>
+    <addaction name="actionNew_Edit_Tab"/>
     <addaction name="actionSave_Layer"/>
    </widget>
    <widget class="QMenu" name="menuView">
@@ -471,6 +472,11 @@
   <action name="actionSave_Layer">
    <property name="text">
     <string>Save Layer</string>
+   </property>
+  </action>
+  <action name="actionNew_Edit_Tab">
+   <property name="text">
+    <string>New Edit Tab</string>
    </property>
   </action>
  </widget>
